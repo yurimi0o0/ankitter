@@ -3,7 +3,7 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
+import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount, markActionButtonUsed } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
@@ -197,6 +197,9 @@ async function handleFeedClick(e) {
   }
 
   if (action === 'like') {
+    if (article.dataset.likeUsed === 'true') return;
+    article.dataset.likeUsed = 'true';
+    markActionButtonUsed(actionEl);
     const nowLiked = !actionEl.classList.contains('liked');
     // setLiked returns the updated stats (likes bumped only when turning on).
     const stats = await repo.setLiked(cardId, nowLiked);
@@ -208,7 +211,11 @@ async function handleFeedClick(e) {
   }
 
   if (action === 'retweet') {
-    // Toggle: tapping again before the card resurfaces cancels the reservation.
+    if (article.dataset.retweetUsed === 'true') return;
+    article.dataset.retweetUsed = 'true';
+    markActionButtonUsed(actionEl);
+    // This display instance can only reserve the card once; future card copies
+    // get their own one-shot button state.
     const wasPending = state.feedEngine.isRetweetPending(cardId);
     if (wasPending) {
       await state.feedEngine.cancelRetweet(cardId);
@@ -226,6 +233,9 @@ async function handleFeedClick(e) {
   }
 
   if (action === 'bookmark') {
+    if (article.dataset.bookmarkUsed === 'true') return;
+    article.dataset.bookmarkUsed = 'true';
+    markActionButtonUsed(actionEl);
     const wasPending = state.feedEngine.isBookmarkPending(cardId);
     if (wasPending) {
       await state.feedEngine.cancelBookmark(cardId);

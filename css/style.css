@@ -466,6 +466,12 @@ button, input, select, textarea {
 .action-btn .icon svg {
   display: block;
 }
+.action-btn:disabled,
+.action-btn.used {
+  opacity: 0.62;
+  pointer-events: none;
+  cursor: default;
+}
 @media (hover: hover) {
   .action-comment:hover {
     color: var(--accent);

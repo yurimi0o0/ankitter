@@ -74,6 +74,9 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   const article = document.createElement('article');
   article.className = 'post';
   article.dataset.cardId = card.id;
+  article.dataset.likeUsed = 'false';
+  article.dataset.retweetUsed = 'false';
+  article.dataset.bookmarkUsed = 'false';
 
   const hue = hashHue(source ? source.handle : 'deck');
   const initial = (source ? source.displayName : '?').charAt(0).toUpperCase();
@@ -148,4 +151,10 @@ export function bumpCommentCount(article, delta) {
 export function setActionCount(article, actionClass, n) {
   const el = article.querySelector(`.${actionClass} .count`);
   if (el) el.textContent = countText(n);
+}
+
+export function markActionButtonUsed(actionEl) {
+  actionEl.classList.add('used');
+  actionEl.setAttribute('aria-disabled', 'true');
+  if ('disabled' in actionEl) actionEl.disabled = true;
 }
