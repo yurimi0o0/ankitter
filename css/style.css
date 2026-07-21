@@ -118,6 +118,17 @@ button, input, select, textarea {
   letter-spacing: -0.02em;
   color: var(--accent);
 }
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.icon-btn svg {
+  display: block;
+}
+#refresh-btn.spinning svg {
+  animation: spin 0.6s ease;
+}
 
 #app-main {
   max-width: 600px;

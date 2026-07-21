@@ -18,6 +18,7 @@ const el = {
   feedList: document.getElementById('feed-list'),
   feedSentinel: document.getElementById('feed-sentinel'),
   feedLoading: document.getElementById('feed-loading'),
+  refreshBtn: document.getElementById('refresh-btn'),
   settingsBtn: document.getElementById('settings-btn'),
   settingsDialog: document.getElementById('settings-dialog'),
   settingsContent: document.getElementById('settings-content'),
@@ -126,6 +127,20 @@ async function startFeed() {
   el.feedSection.hidden = false;
   state.feedEngine = await FeedEngine.create();
   resetFeedDOM();
+  await loadMore(INITIAL_FILL_BATCHES);
+}
+
+// Re-shuffles the timeline from scratch and scrolls to the top. Recreating
+// the engine re-reads likes / retweets / bookmarks, so anything that has
+// newly become due (a 5-day-old like, a 24h retweet) resurfaces.
+async function refreshTimeline() {
+  if (!state.feedEngine || state.isLoading) return;
+  el.refreshBtn.classList.remove('spinning');
+  void el.refreshBtn.offsetWidth;
+  el.refreshBtn.classList.add('spinning');
+  state.feedEngine = await FeedEngine.create();
+  resetFeedDOM();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   await loadMore(INITIAL_FILL_BATCHES);
 }
 
@@ -443,6 +458,7 @@ async function init() {
   const { sources } = await loadSourcesAndCards();
 
   el.settingsBtn.addEventListener('click', openSettingsDialog);
+  el.refreshBtn.addEventListener('click', refreshTimeline);
   setupDialogBackdropClose(el.settingsDialog);
   setupDialogBackdropClose(el.importDialog);
   el.feedList.addEventListener('click', handleFeedClick);
