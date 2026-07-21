@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Ankitter</title>
+<meta name="description" content="暗記項目を眺めるタイムライン" />
+<meta name="theme-color" content="#0f1115" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-inner">
+    <span class="app-logo">Ankitter</span>
+    <button type="button" id="settings-btn" class="icon-btn" aria-label="設定">⚙️</button>
+  </div>
+</header>
+
+<main id="app-main">
+  <section id="onboarding" class="onboarding" hidden>
+    <div class="onboarding-card">
+      <h1 class="onboarding-title">Ankitterへようこそ</h1>
+      <p class="onboarding-desc">TSVファイルを読み込んで、暗記項目のタイムラインを作りましょう。</p>
+      <div id="onboarding-content"></div>
+    </div>
+  </section>
+
+  <section id="feed-section" class="feed-section" hidden>
+    <div id="feed-list" class="feed-list"></div>
+    <div id="feed-sentinel" class="feed-sentinel" aria-hidden="true"></div>
+    <div id="feed-loading" class="feed-loading">読み込み中...</div>
+  </section>
+</main>
+
+<dialog id="settings-dialog" class="app-dialog">
+  <div class="dialog-header">
+    <h2>設定</h2>
+    <button type="button" class="icon-btn" data-close-dialog>✕</button>
+  </div>
+  <div id="settings-content" class="dialog-body"></div>
+</dialog>
+
+<dialog id="import-dialog" class="app-dialog">
+  <div class="dialog-header">
+    <h2 id="import-dialog-title">TSVを追加</h2>
+    <button type="button" class="icon-btn" data-close-dialog>✕</button>
+  </div>
+  <div id="import-dialog-content" class="dialog-body"></div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
