@@ -50,6 +50,15 @@ export async function updateSourceMapping(sourceId, mapping) {
   return source;
 }
 
+// icon: a data: URL image or a short emoji/text string; null clears it.
+export async function updateSourceIcon(sourceId, icon) {
+  const source = await dbGet(STORES.sources, sourceId);
+  if (!source) return;
+  source.icon = icon || null;
+  await dbPut(STORES.sources, source);
+  return source;
+}
+
 export async function deleteSource(sourceId) {
   const cards = await dbGetAllByIndex(STORES.cards, 'sourceId', sourceId);
   for (const card of cards) {

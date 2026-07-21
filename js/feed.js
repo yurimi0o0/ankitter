@@ -74,6 +74,17 @@ export class FeedEngine {
     this.cycleQueue = interleaveFront(priority, rest, PRIORITY_SPREAD);
   }
 
+  isRetweetPending(cardId) {
+    return this.pendingRetweets.some((r) => r.cardId === cardId);
+  }
+
+  async cancelRetweet(cardId) {
+    const idx = this.pendingRetweets.findIndex((r) => r.cardId === cardId);
+    if (idx === -1) return;
+    const [rec] = this.pendingRetweets.splice(idx, 1);
+    await repo.removeRetweet(rec.id);
+  }
+
   async addRetweet(cardId) {
     const dbId = await repo.addRetweet(cardId, RETWEET_DELAY_POSTS);
     this.pendingRetweets.push({ id: dbId, cardId, remaining: RETWEET_DELAY_POSTS });

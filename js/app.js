@@ -3,7 +3,7 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, setLikeButtonState, bumpCommentCount } from './render.js';
+import { createPostElement, setLikeButtonState, setRetweetButtonState, bumpCommentCount } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
@@ -83,6 +83,7 @@ async function appendPost(cardId, isRetweet) {
     source,
     isRetweet,
     liked,
+    rtPending: state.feedEngine ? state.feedEngine.isRetweetPending(cardId) : false,
     tsvComment: card.tsvComment,
     userComments,
     answerMode: state.settings.answerMode,
@@ -173,9 +174,17 @@ async function handleFeedClick(e) {
   }
 
   if (action === 'retweet') {
-    actionEl.classList.add('active');
-    await state.feedEngine.addRetweet(cardId);
-    setTimeout(() => actionEl.classList.remove('active'), 600);
+    // Toggle: tapping again before the card resurfaces cancels the reservation.
+    if (state.feedEngine.isRetweetPending(cardId)) {
+      await state.feedEngine.cancelRetweet(cardId);
+    } else {
+      await state.feedEngine.addRetweet(cardId);
+    }
+    const pending = state.feedEngine.isRetweetPending(cardId);
+    // The same card can appear multiple times in the feed — sync all copies.
+    el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach((post) => {
+      setRetweetButtonState(post, pending);
+    });
     return;
   }
 
@@ -257,6 +266,32 @@ async function handleFeedSubmit(e) {
   bumpCommentCount(ctx.article, 1);
 }
 
+// Downscales an uploaded image to a small square data URL so avatars stay
+// light in IndexedDB and in the DOM.
+function fileToAvatarDataUrl(file, size = 96) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const min = Math.min(img.width, img.height);
+      const sx = (img.width - min) / 2;
+      const sy = (img.height - min) / 2;
+      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('invalid image'));
+    };
+    img.src = url;
+  });
+}
+
 // ---- Settings dialog ----
 
 function openSettingsDialog() {
@@ -279,6 +314,17 @@ function renderSettingsDialogContent() {
       applyAnswerModeToDOM();
     },
     openAddSource: () => openImportDialog({ mode: 'add' }),
+    changeSourceIcon: async (source, file) => {
+      try {
+        const dataUrl = await fileToAvatarDataUrl(file);
+        await repo.updateSourceIcon(source.id, dataUrl);
+        await loadSourcesAndCards();
+        renderSettingsDialogContent();
+        await refreshFeedForDataChange();
+      } catch (err) {
+        alert('画像の読み込みに失敗しました');
+      }
+    },
     openRemapSource: (source) => openImportDialog({ mode: 'remap', source }),
     deleteSource: async (source) => {
       await repo.deleteSource(source.id);
