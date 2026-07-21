@@ -1,7 +1,7 @@
 // Low-level IndexedDB access. No domain knowledge lives here — see repo.js.
 
 const DB_NAME = 'ankitter-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
   sources: 'sources',
@@ -10,6 +10,7 @@ export const STORES = {
   likes: 'likes',
   retweets: 'retweets',
   bookmarks: 'bookmarks',
+  stats: 'stats',
   viewHistory: 'viewHistory',
   settings: 'settings',
 };
@@ -45,10 +46,18 @@ function openDB() {
         const s = db.createObjectStore(STORES.bookmarks, { keyPath: 'id', autoIncrement: true });
         s.createIndex('cardId', 'cardId', { unique: false });
       }
-      // v1 retweet records were post-count based ({remaining}); v2 records are
-      // time based ({retweetedAt}), so old reservations are dropped.
-      if (e.oldVersion > 0 && e.oldVersion < 2 && db.objectStoreNames.contains(STORES.retweets)) {
-        e.target.transaction.objectStore(STORES.retweets).clear();
+      if (!db.objectStoreNames.contains(STORES.stats)) {
+        // Per-card cumulative counters { cardId, impressions, likes, retweets, bookmarks }.
+        db.createObjectStore(STORES.stats, { keyPath: 'cardId' });
+      }
+      // The retweet/bookmark record shapes changed in v3 (retweet: time -> post
+      // count, bookmark: post count -> time). In-flight reservations can't be
+      // translated, so drop both stores' transient data on upgrade. Likes,
+      // comments, cards etc. are untouched.
+      if (e.oldVersion > 0 && e.oldVersion < 3) {
+        const tx = e.target.transaction;
+        if (db.objectStoreNames.contains(STORES.retweets)) tx.objectStore(STORES.retweets).clear();
+        if (db.objectStoreNames.contains(STORES.bookmarks)) tx.objectStore(STORES.bookmarks).clear();
       }
       if (!db.objectStoreNames.contains(STORES.viewHistory)) {
         const s = db.createObjectStore(STORES.viewHistory, { keyPath: 'id', autoIncrement: true });

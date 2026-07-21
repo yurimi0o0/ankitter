@@ -431,8 +431,9 @@ button, input, select, textarea {
   margin-top: 0.4rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  max-width: 300px;
+  /* Left-aligned with a fixed gap (not space-between): the per-card count
+     values differ, and space-between would shift icons as widths change. */
+  gap: 0.6rem;
   margin-left: -0.5rem;
 }
 .action-btn {
@@ -440,7 +441,7 @@ button, input, select, textarea {
   border: none;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   color: var(--text-muted);
   font-size: 0.82rem;
   cursor: pointer;
@@ -449,6 +450,14 @@ button, input, select, textarea {
   border-radius: 999px;
   transition: color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent;
+}
+/* The impression indicator is display-only, not a button. */
+.action-stat {
+  cursor: default;
+}
+.action-btn .count {
+  min-width: 0.6rem;
+  font-variant-numeric: tabular-nums;
 }
 .action-btn .icon {
   display: flex;
