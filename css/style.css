@@ -459,6 +459,10 @@ button, input, select, textarea {
     color: var(--like);
     background: color-mix(in srgb, var(--like) 12%, transparent);
   }
+  .action-bookmark:hover {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
 }
 .action-comment.expanded {
   color: var(--accent);
@@ -467,7 +471,14 @@ button, input, select, textarea {
   color: var(--accent);
   font-weight: 700;
 }
-.rt-label {
+.action-bookmark.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+.action-bookmark.active svg path {
+  fill: currentColor;
+}
+.rt-label, .bm-label {
   font-size: 0.78rem;
 }
 .action-like.liked {

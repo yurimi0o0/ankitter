@@ -66,6 +66,7 @@ export async function deleteSource(sourceId) {
     await dbDeleteByIndex(STORES.userComments, 'cardId', card.id);
     await dbDelete(STORES.likes, card.id);
     await dbDeleteByIndex(STORES.retweets, 'cardId', card.id);
+    await dbDeleteByIndex(STORES.bookmarks, 'cardId', card.id);
     await dbDeleteByIndex(STORES.viewHistory, 'cardId', card.id);
   }
   await dbDelete(STORES.sources, sourceId);
@@ -136,25 +137,32 @@ export async function setLiked(cardId, liked) {
   }
 }
 
-// ---- Retweets ----
+// ---- Retweets (24h one-shot resurface) ----
 
 export async function getAllRetweets() {
   return dbGetAll(STORES.retweets);
 }
 
-export async function addRetweet(cardId, remaining) {
-  return dbPut(STORES.retweets, { cardId, remaining });
-}
-
-export async function updateRetweetRemaining(id, remaining) {
-  const rec = await dbGet(STORES.retweets, id);
-  if (!rec) return;
-  rec.remaining = remaining;
-  await dbPut(STORES.retweets, rec);
+export async function addRetweet(cardId) {
+  return dbPut(STORES.retweets, { cardId, retweetedAt: Date.now() });
 }
 
 export async function removeRetweet(id) {
   await dbDelete(STORES.retweets, id);
+}
+
+// ---- Bookmarks (~10 posts one-shot reinsert) ----
+
+export async function getAllBookmarks() {
+  return dbGetAll(STORES.bookmarks);
+}
+
+export async function addBookmark(cardId, remaining) {
+  return dbPut(STORES.bookmarks, { cardId, remaining });
+}
+
+export async function removeBookmark(id) {
+  await dbDelete(STORES.bookmarks, id);
 }
 
 // ---- View history ----
@@ -190,26 +198,30 @@ export async function getAllSettings() {
 // ---- Backup (export / import everything) ----
 
 export async function exportAllData() {
-  const [sources, cards, userComments, likes, retweets, viewHistory, settings] = await Promise.all([
+  const [sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings] = await Promise.all([
     dbGetAll(STORES.sources),
     dbGetAll(STORES.cards),
     dbGetAll(STORES.userComments),
     dbGetAll(STORES.likes),
     dbGetAll(STORES.retweets),
+    dbGetAll(STORES.bookmarks),
     dbGetAll(STORES.viewHistory),
     dbGetAll(STORES.settings),
   ]);
   return {
     app: 'ankitter',
-    version: 1,
+    version: 2,
     exportedAt: Date.now(),
-    data: { sources, cards, userComments, likes, retweets, viewHistory, settings },
+    data: { sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings },
   };
 }
 
 export async function importAllData(backup) {
   if (!backup || !backup.data) throw new Error('不正なバックアップファイルです');
-  const { sources, cards, userComments, likes, retweets, viewHistory, settings } = backup.data;
+  const { sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings } = backup.data;
+  // v1 backups store post-count retweets ({remaining}); those reservations
+  // don't translate to the time-based model, so they are skipped.
+  const timeBasedRetweets = (retweets || []).filter((r) => r.retweetedAt);
 
   await Promise.all([
     dbClear(STORES.sources),
@@ -217,6 +229,7 @@ export async function importAllData(backup) {
     dbClear(STORES.userComments),
     dbClear(STORES.likes),
     dbClear(STORES.retweets),
+    dbClear(STORES.bookmarks),
     dbClear(STORES.viewHistory),
     dbClear(STORES.settings),
   ]);
@@ -226,7 +239,8 @@ export async function importAllData(backup) {
     dbBulkPut(STORES.cards, cards || []),
     dbBulkPut(STORES.userComments, userComments || []),
     dbBulkPut(STORES.likes, likes || []),
-    dbBulkPut(STORES.retweets, retweets || []),
+    dbBulkPut(STORES.retweets, timeBasedRetweets),
+    dbBulkPut(STORES.bookmarks, bookmarks || []),
     dbBulkPut(STORES.viewHistory, viewHistory || []),
     dbBulkPut(STORES.settings, settings || []),
   ]);

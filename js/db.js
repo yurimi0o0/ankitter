@@ -1,7 +1,7 @@
 // Low-level IndexedDB access. No domain knowledge lives here — see repo.js.
 
 const DB_NAME = 'ankitter-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   sources: 'sources',
@@ -9,6 +9,7 @@ export const STORES = {
   userComments: 'userComments',
   likes: 'likes',
   retweets: 'retweets',
+  bookmarks: 'bookmarks',
   viewHistory: 'viewHistory',
   settings: 'settings',
 };
@@ -39,6 +40,15 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORES.retweets)) {
         const s = db.createObjectStore(STORES.retweets, { keyPath: 'id', autoIncrement: true });
         s.createIndex('cardId', 'cardId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORES.bookmarks)) {
+        const s = db.createObjectStore(STORES.bookmarks, { keyPath: 'id', autoIncrement: true });
+        s.createIndex('cardId', 'cardId', { unique: false });
+      }
+      // v1 retweet records were post-count based ({remaining}); v2 records are
+      // time based ({retweetedAt}), so old reservations are dropped.
+      if (e.oldVersion > 0 && e.oldVersion < 2 && db.objectStoreNames.contains(STORES.retweets)) {
+        e.target.transaction.objectStore(STORES.retweets).clear();
       }
       if (!db.objectStoreNames.contains(STORES.viewHistory)) {
         const s = db.createObjectStore(STORES.viewHistory, { keyPath: 'id', autoIncrement: true });
