@@ -36,10 +36,15 @@ function linkifyTags(tags) {
 function commentItemHtml(comment) {
   return `
     <li class="comment-item" data-comment-id="${comment.id}">
-      <div class="comment-text">${escapeHtml(comment.text)}</div>
+      <div class="comment-content">
+        <div class="comment-text">${escapeHtml(comment.text)}</div>
+      </div>
       <div class="comment-actions">
-        <button type="button" class="link-btn" data-action="comment-edit">編集</button>
-        <button type="button" class="link-btn danger" data-action="comment-delete">削除</button>
+        <button type="button" class="comment-menu-toggle" data-action="comment-menu-toggle" aria-label="コメントの操作メニュー" aria-expanded="false">⋮</button>
+        <div class="comment-menu" hidden>
+          <button type="button" class="link-btn" data-action="comment-edit">編集</button>
+          <button type="button" class="link-btn danger" data-action="comment-delete">削除</button>
+        </div>
       </div>
     </li>`;
 }

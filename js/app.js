@@ -241,6 +241,15 @@ async function handleFeedClick(e) {
     return;
   }
 
+  if (action === 'comment-menu-toggle') {
+    const item = actionEl.closest('.comment-item');
+    const menu = item.querySelector('.comment-menu');
+    const isHidden = menu.hidden;
+    menu.hidden = !isHidden;
+    actionEl.setAttribute('aria-expanded', String(isHidden));
+    return;
+  }
+
   if (action === 'comment-edit') {
     const item = actionEl.closest('.comment-item');
     startEditComment(item);
@@ -291,10 +300,15 @@ function startEditComment(item) {
 
 function renderCommentView(item, text) {
   item.innerHTML = `
-    <div class="comment-text"></div>
+    <div class="comment-content">
+      <div class="comment-text"></div>
+    </div>
     <div class="comment-actions">
-      <button type="button" class="link-btn" data-action="comment-edit">編集</button>
-      <button type="button" class="link-btn danger" data-action="comment-delete">削除</button>
+      <button type="button" class="comment-menu-toggle" data-action="comment-menu-toggle" aria-label="コメントの操作メニュー" aria-expanded="false">⋮</button>
+      <div class="comment-menu" hidden>
+        <button type="button" class="link-btn" data-action="comment-edit">編集</button>
+        <button type="button" class="link-btn danger" data-action="comment-delete">削除</button>
+      </div>
     </div>`;
   item.querySelector('.comment-text').textContent = text;
 }
