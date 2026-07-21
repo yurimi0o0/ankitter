@@ -3,7 +3,7 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, bumpCommentCount } from './render.js';
+import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
@@ -78,7 +78,13 @@ async function appendPost(cardId, isRetweet, isBookmark) {
   const card = state.cardsById.get(cardId);
   if (!card) return;
   const source = state.sourcesById.get(card.sourceId);
-  const [liked, userComments] = await Promise.all([repo.isLiked(cardId), repo.getUserComments(cardId)]);
+  // recordImpression bumps the impression counter and returns the full stats,
+  // so we render all four counts without an extra read.
+  const [liked, userComments, stats] = await Promise.all([
+    repo.isLiked(cardId),
+    repo.getUserComments(cardId),
+    repo.recordImpression(cardId),
+  ]);
   const article = createPostElement({
     card,
     source,
@@ -90,6 +96,7 @@ async function appendPost(cardId, isRetweet, isBookmark) {
     tsvComment: card.tsvComment,
     userComments,
     answerMode: state.settings.answerMode,
+    stats,
   });
   el.feedList.appendChild(article);
   repo.addViewHistory(cardId);
@@ -162,6 +169,12 @@ function findPostContext(target) {
   return { article, cardId: article.dataset.cardId };
 }
 
+// Applies fn to every rendered copy of a card (the same card can appear more
+// than once in an infinite feed).
+function forEachCardCopy(cardId, fn) {
+  el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
+}
+
 async function handleFeedClick(e) {
   const actionEl = e.target.closest('[data-action]');
   if (!actionEl) return;
@@ -185,35 +198,45 @@ async function handleFeedClick(e) {
 
   if (action === 'like') {
     const nowLiked = !actionEl.classList.contains('liked');
-    setLikeButtonState(article, nowLiked);
-    await repo.setLiked(cardId, nowLiked);
+    // setLiked returns the updated stats (likes bumped only when turning on).
+    const stats = await repo.setLiked(cardId, nowLiked);
+    forEachCardCopy(cardId, (post) => {
+      setLikeButtonState(post, nowLiked);
+      setActionCount(post, 'action-like', stats.likes);
+    });
     return;
   }
 
   if (action === 'retweet') {
     // Toggle: tapping again before the card resurfaces cancels the reservation.
-    if (state.feedEngine.isRetweetPending(cardId)) {
+    const wasPending = state.feedEngine.isRetweetPending(cardId);
+    if (wasPending) {
       await state.feedEngine.cancelRetweet(cardId);
     } else {
       await state.feedEngine.addRetweet(cardId);
     }
+    // Count the tap only when actually retweeting (not on cancel).
+    const stats = wasPending ? null : await repo.bumpStat(cardId, 'retweets');
     const pending = state.feedEngine.isRetweetPending(cardId);
-    // The same card can appear multiple times in the feed — sync all copies.
-    el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach((post) => {
+    forEachCardCopy(cardId, (post) => {
       setRetweetButtonState(post, pending);
+      if (stats) setActionCount(post, 'action-retweet', stats.retweets);
     });
     return;
   }
 
   if (action === 'bookmark') {
-    if (state.feedEngine.isBookmarkPending(cardId)) {
+    const wasPending = state.feedEngine.isBookmarkPending(cardId);
+    if (wasPending) {
       await state.feedEngine.cancelBookmark(cardId);
     } else {
       await state.feedEngine.addBookmark(cardId);
     }
+    const stats = wasPending ? null : await repo.bumpStat(cardId, 'bookmarks');
     const pending = state.feedEngine.isBookmarkPending(cardId);
-    el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach((post) => {
+    forEachCardCopy(cardId, (post) => {
       setBookmarkButtonState(post, pending);
+      if (stats) setActionCount(post, 'action-bookmark', stats.bookmarks);
     });
     return;
   }

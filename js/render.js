@@ -7,7 +7,12 @@ const ICONS = {
   retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
   heart: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heart-path"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
   bookmark: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="18" y1="20" x2="18" y2="10"/></svg>',
 };
+
+function countText(n) {
+  return n > 0 ? String(n) : '';
+}
 
 function hashHue(str) {
   let hash = 0;
@@ -64,7 +69,8 @@ function avatarHtml(source, hue, initial) {
   return `<div class="avatar" style="background: hsl(${hue} 70% 45%)">${escapeHtml(initial)}</div>`;
 }
 
-export function createPostElement({ card, source, isRetweet, isBookmark, liked, rtPending, bmPending, tsvComment, userComments, answerMode }) {
+export function createPostElement({ card, source, isRetweet, isBookmark, liked, rtPending, bmPending, tsvComment, userComments, answerMode, stats }) {
+  const s = stats || { impressions: 0, likes: 0, retweets: 0, bookmarks: 0 };
   const article = document.createElement('article');
   article.className = 'post';
   article.dataset.cardId = card.id;
@@ -74,8 +80,8 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   const answerBlurClass = answerMode === 'blur' ? ' blurred' : '';
 
   article.innerHTML = `
-    ${isRetweet ? `<div class="retweet-flag">${ICONS.retweet} 昨日のリツイート</div>` : ''}
-    ${isBookmark ? `<div class="retweet-flag">${ICONS.bookmark} 保存から再表示</div>` : ''}
+    ${isRetweet ? `<div class="retweet-flag">${ICONS.retweet} もう一度</div>` : ''}
+    ${isBookmark ? `<div class="retweet-flag">${ICONS.bookmark} 保存から</div>` : ''}
     <div class="post-row">
       ${avatarHtml(source, hue, initial)}
       <div class="post-body">
@@ -89,16 +95,19 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
         ${commentsSectionHtml(tsvComment, userComments)}
         <div class="post-actions">
           <button type="button" class="action-btn action-comment" data-action="toggle-comments" aria-label="コメント">
-            <span class="icon">${ICONS.comment}</span><span class="count">${userComments.length || ''}</span>
+            <span class="icon">${ICONS.comment}</span><span class="count">${countText(userComments.length)}</span>
           </button>
-          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet" aria-label="明日もう一度見る">
-            <span class="icon">${ICONS.retweet}</span><span class="rt-label">${rtPending ? '明日' : ''}</span>
+          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet" aria-label="すぐまた見る">
+            <span class="icon">${ICONS.retweet}</span><span class="count">${countText(s.retweets)}</span>
           </button>
-          <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like" aria-label="覚えている">
-            <span class="icon">${ICONS.heart}</span>
+          <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like" aria-label="覚えた">
+            <span class="icon">${ICONS.heart}</span><span class="count">${countText(s.likes)}</span>
           </button>
-          <button type="button" class="action-btn action-bookmark${bmPending ? ' active' : ''}" data-action="bookmark" aria-label="少し後でもう一度見る">
-            <span class="icon">${ICONS.bookmark}</span><span class="bm-label">${bmPending ? '保存' : ''}</span>
+          <div class="action-btn action-stat" aria-label="表示回数">
+            <span class="icon">${ICONS.chart}</span><span class="count">${countText(s.impressions)}</span>
+          </div>
+          <button type="button" class="action-btn action-bookmark${bmPending ? ' active' : ''}" data-action="bookmark" aria-label="後で見返す">
+            <span class="icon">${ICONS.bookmark}</span><span class="count">${countText(s.bookmarks)}</span>
           </button>
         </div>
       </div>
@@ -122,20 +131,21 @@ export function setLikeButtonState(article, liked) {
 }
 
 export function setRetweetButtonState(article, pending) {
-  const btn = article.querySelector('.action-retweet');
-  btn.classList.toggle('active', pending);
-  btn.querySelector('.rt-label').textContent = pending ? '明日' : '';
+  article.querySelector('.action-retweet').classList.toggle('active', pending);
 }
 
 export function setBookmarkButtonState(article, pending) {
-  const btn = article.querySelector('.action-bookmark');
-  btn.classList.toggle('active', pending);
-  btn.querySelector('.bm-label').textContent = pending ? '保存' : '';
+  article.querySelector('.action-bookmark').classList.toggle('active', pending);
 }
 
 export function bumpCommentCount(article, delta) {
   const el = article.querySelector('.action-comment .count');
   const current = parseInt(el.textContent, 10) || 0;
-  const next = Math.max(0, current + delta);
-  el.textContent = next === 0 ? '' : String(next);
+  el.textContent = countText(Math.max(0, current + delta));
+}
+
+// Sets the numeric count on one action (e.g. '.action-like') to an absolute value.
+export function setActionCount(article, actionClass, n) {
+  const el = article.querySelector(`.${actionClass} .count`);
+  if (el) el.textContent = countText(n);
 }

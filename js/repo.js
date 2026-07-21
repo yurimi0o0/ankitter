@@ -67,6 +67,7 @@ export async function deleteSource(sourceId) {
     await dbDelete(STORES.likes, card.id);
     await dbDeleteByIndex(STORES.retweets, 'cardId', card.id);
     await dbDeleteByIndex(STORES.bookmarks, 'cardId', card.id);
+    await dbDelete(STORES.stats, card.id);
     await dbDeleteByIndex(STORES.viewHistory, 'cardId', card.id);
   }
   await dbDelete(STORES.sources, sourceId);
@@ -132,37 +133,60 @@ export async function isLiked(cardId) {
 export async function setLiked(cardId, liked) {
   if (liked) {
     await dbPut(STORES.likes, { cardId, likedAt: Date.now() });
-  } else {
-    await dbDelete(STORES.likes, cardId);
+    return bumpStat(cardId, 'likes');
   }
+  await dbDelete(STORES.likes, cardId);
+  return getStats(cardId);
 }
 
-// ---- Retweets (24h one-shot resurface) ----
+// ---- Retweets (~10 posts one-shot reinsert; post-count based) ----
 
 export async function getAllRetweets() {
   return dbGetAll(STORES.retweets);
 }
 
-export async function addRetweet(cardId) {
-  return dbPut(STORES.retweets, { cardId, retweetedAt: Date.now() });
+export async function addRetweet(cardId, remaining) {
+  return dbPut(STORES.retweets, { cardId, remaining });
 }
 
 export async function removeRetweet(id) {
   await dbDelete(STORES.retweets, id);
 }
 
-// ---- Bookmarks (~10 posts one-shot reinsert) ----
+// ---- Bookmarks (24h one-shot resurface; time based) ----
 
 export async function getAllBookmarks() {
   return dbGetAll(STORES.bookmarks);
 }
 
-export async function addBookmark(cardId, remaining) {
-  return dbPut(STORES.bookmarks, { cardId, remaining });
+export async function addBookmark(cardId) {
+  return dbPut(STORES.bookmarks, { cardId, savedAt: Date.now() });
 }
 
 export async function removeBookmark(id) {
   await dbDelete(STORES.bookmarks, id);
+}
+
+// ---- Stats (per-card cumulative counters) ----
+
+const EMPTY_STATS = { impressions: 0, likes: 0, retweets: 0, bookmarks: 0 };
+
+export async function getStats(cardId) {
+  const rec = await dbGet(STORES.stats, cardId);
+  return { ...EMPTY_STATS, ...(rec || {}), cardId };
+}
+
+// Increments one counter and returns the full updated stats. Never decrements —
+// these are "how many times so far" totals.
+export async function bumpStat(cardId, field) {
+  const stats = await getStats(cardId);
+  stats[field] = (stats[field] || 0) + 1;
+  await dbPut(STORES.stats, stats);
+  return stats;
+}
+
+export async function recordImpression(cardId) {
+  return bumpStat(cardId, 'impressions');
 }
 
 // ---- View history ----
@@ -198,30 +222,33 @@ export async function getAllSettings() {
 // ---- Backup (export / import everything) ----
 
 export async function exportAllData() {
-  const [sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings] = await Promise.all([
+  const [sources, cards, userComments, likes, retweets, bookmarks, stats, viewHistory, settings] = await Promise.all([
     dbGetAll(STORES.sources),
     dbGetAll(STORES.cards),
     dbGetAll(STORES.userComments),
     dbGetAll(STORES.likes),
     dbGetAll(STORES.retweets),
     dbGetAll(STORES.bookmarks),
+    dbGetAll(STORES.stats),
     dbGetAll(STORES.viewHistory),
     dbGetAll(STORES.settings),
   ]);
   return {
     app: 'ankitter',
-    version: 2,
+    version: 3,
     exportedAt: Date.now(),
-    data: { sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings },
+    data: { sources, cards, userComments, likes, retweets, bookmarks, stats, viewHistory, settings },
   };
 }
 
 export async function importAllData(backup) {
   if (!backup || !backup.data) throw new Error('不正なバックアップファイルです');
-  const { sources, cards, userComments, likes, retweets, bookmarks, viewHistory, settings } = backup.data;
-  // v1 backups store post-count retweets ({remaining}); those reservations
-  // don't translate to the time-based model, so they are skipped.
-  const timeBasedRetweets = (retweets || []).filter((r) => r.retweetedAt);
+  const { sources, cards, userComments, likes, retweets, bookmarks, stats, viewHistory, settings } = backup.data;
+  // Retweet/bookmark reservations are transient and their shapes changed in v3
+  // (retweet: post-count {remaining}; bookmark: time {savedAt}). Keep only
+  // records matching the current shape so older backups import cleanly.
+  const postCountRetweets = (retweets || []).filter((r) => typeof r.remaining === 'number');
+  const timeBasedBookmarks = (bookmarks || []).filter((b) => typeof b.savedAt === 'number');
 
   await Promise.all([
     dbClear(STORES.sources),
@@ -230,6 +257,7 @@ export async function importAllData(backup) {
     dbClear(STORES.likes),
     dbClear(STORES.retweets),
     dbClear(STORES.bookmarks),
+    dbClear(STORES.stats),
     dbClear(STORES.viewHistory),
     dbClear(STORES.settings),
   ]);
@@ -239,8 +267,9 @@ export async function importAllData(backup) {
     dbBulkPut(STORES.cards, cards || []),
     dbBulkPut(STORES.userComments, userComments || []),
     dbBulkPut(STORES.likes, likes || []),
-    dbBulkPut(STORES.retweets, timeBasedRetweets),
-    dbBulkPut(STORES.bookmarks, bookmarks || []),
+    dbBulkPut(STORES.retweets, postCountRetweets),
+    dbBulkPut(STORES.bookmarks, timeBasedBookmarks),
+    dbBulkPut(STORES.stats, stats || []),
     dbBulkPut(STORES.viewHistory, viewHistory || []),
     dbBulkPut(STORES.settings, settings || []),
   ]);

@@ -1,14 +1,15 @@
 // Feed ordering engine. Decides what card to show next: normal shuffled
-// rotation, plus three re-surfacing mechanics:
-//   ♡ 覚えている  — resurfaces 5 days after the like (repeats each cycle)
-//   🔁 リツイート — resurfaces once, 24 hours after the tap
-//   🔖 保存      — reinserted once, ~10 posts after the tap
+// rotation, plus three mechanics:
+//   ♡ 覚えた   — SUPPRESSED for ~7 days after the like (shown less), then
+//                 returns to normal rotation.
+//   🔁 RT      — reinserted once, ~10 posts after the tap (in-session).
+//   🔖 保存    — resurfaces once near the front, ~24 hours after the tap.
 
 import * as repo from './repo.js';
 
-const LIKE_DELAY_MS = 5 * 24 * 60 * 60 * 1000;
-const RETWEET_DELAY_MS = 24 * 60 * 60 * 1000;
-const BOOKMARK_DELAY_POSTS = 10;
+const LIKE_SUPPRESS_MS = 7 * 24 * 60 * 60 * 1000; // ♡: hide from rotation this long
+const BOOKMARK_DELAY_MS = 24 * 60 * 60 * 1000;    // 🔖 保存: resurface after ~1 day
+const RETWEET_DELAY_POSTS = 10;                    // 🔁 RT: reinsert after ~10 posts
 const PRIORITY_SPREAD = 4; // 1 priority card every (spread+1) posts near the front
 
 function shuffle(arr) {
@@ -34,17 +35,17 @@ function interleaveFront(priority, rest, spread) {
 export class FeedEngine {
   constructor(cardIds) {
     this.allCardIds = cardIds;
-    this.cycleQueue = []; // [{ cardId, kind: 'normal' | 'rt' }]
-    this.pendingBookmarks = []; // [{ id, cardId, remaining }]
-    this.activeRetweets = new Map(); // cardId -> db id (waiting for their 24h)
+    this.cycleQueue = []; // [{ cardId, kind: 'normal' | 'bm' }]
+    this.pendingRetweets = []; // [{ id, cardId, remaining }] — post-count countdown
+    this.activeBookmarks = new Map(); // cardId -> db id (waiting for their 24h)
   }
 
   static async create() {
     const cards = await repo.getAllCards();
     const engine = new FeedEngine(cards.map((c) => c.id));
-    const [bookmarks, retweets] = await Promise.all([repo.getAllBookmarks(), repo.getAllRetweets()]);
-    engine.pendingBookmarks = bookmarks.map((b) => ({ id: b.id, cardId: b.cardId, remaining: b.remaining }));
-    for (const r of retweets) engine.activeRetweets.set(r.cardId, r.id);
+    const [retweets, bookmarks] = await Promise.all([repo.getAllRetweets(), repo.getAllBookmarks()]);
+    engine.pendingRetweets = retweets.map((r) => ({ id: r.id, cardId: r.cardId, remaining: r.remaining }));
+    for (const b of bookmarks) engine.activeBookmarks.set(b.cardId, b.id);
     return engine;
   }
 
@@ -53,9 +54,9 @@ export class FeedEngine {
     // Drop anything mid-cycle that no longer exists (deleted deck etc).
     const valid = new Set(cardIds);
     this.cycleQueue = this.cycleQueue.filter((e) => valid.has(e.cardId));
-    this.pendingBookmarks = this.pendingBookmarks.filter((b) => valid.has(b.cardId));
-    for (const cardId of this.activeRetweets.keys()) {
-      if (!valid.has(cardId)) this.activeRetweets.delete(cardId);
+    this.pendingRetweets = this.pendingRetweets.filter((r) => valid.has(r.cardId));
+    for (const cardId of this.activeBookmarks.keys()) {
+      if (!valid.has(cardId)) this.activeBookmarks.delete(cardId);
     }
   }
 
@@ -69,78 +70,79 @@ export class FeedEngine {
       return;
     }
     const now = Date.now();
-    const [likes, retweets] = await Promise.all([repo.getAllLikes(), repo.getAllRetweets()]);
+    const [likes, bookmarks] = await Promise.all([repo.getAllLikes(), repo.getAllBookmarks()]);
     const validIds = new Set(this.allCardIds);
 
-    const dueRts = retweets.filter(
-      (r) => validIds.has(r.cardId) && now - r.retweetedAt >= RETWEET_DELAY_MS
-    );
-    const dueRtIds = new Set(dueRts.map((r) => r.cardId));
+    // Bookmarks past their 24h resurface near the front (one appearance).
+    const dueBms = bookmarks.filter((b) => validIds.has(b.cardId) && now - b.savedAt >= BOOKMARK_DELAY_MS);
+    const dueBmIds = new Set(dueBms.map((b) => b.cardId));
 
-    const dueLikeIds = likes
-      .filter((l) => validIds.has(l.cardId) && now - l.likedAt >= LIKE_DELAY_MS && !dueRtIds.has(l.cardId))
-      .map((l) => l.cardId);
-
-    const priority = shuffle([
-      ...dueRts.map((r) => ({ cardId: r.cardId, kind: 'rt' })),
-      ...dueLikeIds.map((cardId) => ({ cardId, kind: 'normal' })),
-    ]);
-    const prioritySet = new Set(priority.map((e) => e.cardId));
-    const rest = shuffle(
-      this.allCardIds.filter((id) => !prioritySet.has(id)).map((cardId) => ({ cardId, kind: 'normal' }))
+    // Recently-liked ("覚えた") cards are suppressed from rotation for a week.
+    const suppressed = new Set(
+      likes.filter((l) => validIds.has(l.cardId) && now - l.likedAt < LIKE_SUPPRESS_MS).map((l) => l.cardId)
     );
+
+    let restIds = this.allCardIds.filter((id) => !suppressed.has(id) && !dueBmIds.has(id));
+    // If everything is suppressed, fall back to showing them anyway so the
+    // infinite feed never runs dry.
+    if (restIds.length === 0) {
+      restIds = this.allCardIds.filter((id) => !dueBmIds.has(id));
+    }
+
+    const priority = shuffle(dueBms.map((b) => ({ cardId: b.cardId, kind: 'bm' })));
+    const rest = shuffle(restIds.map((cardId) => ({ cardId, kind: 'normal' })));
 
     this.cycleQueue = interleaveFront(priority, rest, PRIORITY_SPREAD);
   }
 
-  // ---- Retweet (24h, one-shot) ----
+  // ---- Retweet (~10 posts, one-shot, in-session) ----
 
   isRetweetPending(cardId) {
-    return this.activeRetweets.has(cardId);
+    return this.pendingRetweets.some((r) => r.cardId === cardId);
   }
 
   async addRetweet(cardId) {
-    const dbId = await repo.addRetweet(cardId);
-    this.activeRetweets.set(cardId, dbId);
+    const dbId = await repo.addRetweet(cardId, RETWEET_DELAY_POSTS);
+    this.pendingRetweets.push({ id: dbId, cardId, remaining: RETWEET_DELAY_POSTS });
   }
 
   async cancelRetweet(cardId) {
-    const dbId = this.activeRetweets.get(cardId);
-    if (dbId === undefined) return;
-    this.activeRetweets.delete(cardId);
-    // Also drop a not-yet-rendered resurfaced copy from the current cycle.
-    this.cycleQueue = this.cycleQueue.filter((e) => !(e.cardId === cardId && e.kind === 'rt'));
-    await repo.removeRetweet(dbId);
+    const idx = this.pendingRetweets.findIndex((r) => r.cardId === cardId);
+    if (idx === -1) return;
+    const [rec] = this.pendingRetweets.splice(idx, 1);
+    await repo.removeRetweet(rec.id);
   }
 
-  // ---- Bookmark (~10 posts, one-shot) ----
+  // ---- Bookmark (24h, one-shot) ----
 
   isBookmarkPending(cardId) {
-    return this.pendingBookmarks.some((b) => b.cardId === cardId);
+    return this.activeBookmarks.has(cardId);
   }
 
   async addBookmark(cardId) {
-    const dbId = await repo.addBookmark(cardId, BOOKMARK_DELAY_POSTS);
-    this.pendingBookmarks.push({ id: dbId, cardId, remaining: BOOKMARK_DELAY_POSTS });
+    const dbId = await repo.addBookmark(cardId);
+    this.activeBookmarks.set(cardId, dbId);
   }
 
   async cancelBookmark(cardId) {
-    const idx = this.pendingBookmarks.findIndex((b) => b.cardId === cardId);
-    if (idx === -1) return;
-    const [rec] = this.pendingBookmarks.splice(idx, 1);
-    await repo.removeBookmark(rec.id);
+    const dbId = this.activeBookmarks.get(cardId);
+    if (dbId === undefined) return;
+    this.activeBookmarks.delete(cardId);
+    // Also drop a not-yet-rendered resurfaced copy from the current cycle.
+    this.cycleQueue = this.cycleQueue.filter((e) => !(e.cardId === cardId && e.kind === 'bm'));
+    await repo.removeBookmark(dbId);
   }
 
   // Returns up to n upcoming feed entries: { cardId, isRetweet, isBookmark }
   async getNextBatch(n) {
     const batch = [];
     for (let i = 0; i < n; i++) {
-      for (const b of this.pendingBookmarks) b.remaining--;
-      const dueIndex = this.pendingBookmarks.findIndex((b) => b.remaining <= 0);
+      for (const r of this.pendingRetweets) r.remaining--;
+      const dueIndex = this.pendingRetweets.findIndex((r) => r.remaining <= 0);
       if (dueIndex !== -1) {
-        const [due] = this.pendingBookmarks.splice(dueIndex, 1);
-        repo.removeBookmark(due.id);
-        batch.push({ cardId: due.cardId, isRetweet: false, isBookmark: true });
+        const [due] = this.pendingRetweets.splice(dueIndex, 1);
+        repo.removeRetweet(due.id);
+        batch.push({ cardId: due.cardId, isRetweet: true, isBookmark: false });
         continue;
       }
 
@@ -149,14 +151,14 @@ export class FeedEngine {
       }
       if (this.cycleQueue.length === 0) break; // no cards to show at all
       const entry = this.cycleQueue.shift();
-      const isRetweet = entry.kind === 'rt';
-      if (isRetweet) {
+      const isBookmark = entry.kind === 'bm';
+      if (isBookmark) {
         // The 24h reservation is fulfilled by this appearance.
-        const dbId = this.activeRetweets.get(entry.cardId);
-        this.activeRetweets.delete(entry.cardId);
-        if (dbId !== undefined) repo.removeRetweet(dbId);
+        const dbId = this.activeBookmarks.get(entry.cardId);
+        this.activeBookmarks.delete(entry.cardId);
+        if (dbId !== undefined) repo.removeBookmark(dbId);
       }
-      batch.push({ cardId: entry.cardId, isRetweet, isBookmark: false });
+      batch.push({ cardId: entry.cardId, isRetweet: false, isBookmark });
     }
     return batch;
   }
