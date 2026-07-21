@@ -480,17 +480,12 @@ button, input, select, textarea {
 }
 .action-retweet.active {
   color: var(--accent);
-  font-weight: 700;
 }
 .action-bookmark.active {
   color: var(--accent);
-  font-weight: 700;
 }
 .action-bookmark.active svg path {
   fill: currentColor;
-}
-.rt-label, .bm-label {
-  font-size: 0.78rem;
 }
 .action-like.liked {
   color: var(--like);

@@ -92,13 +92,13 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
             <span class="icon">${ICONS.comment}</span><span class="count">${userComments.length || ''}</span>
           </button>
           <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet" aria-label="明日もう一度見る">
-            <span class="icon">${ICONS.retweet}</span><span class="rt-label">${rtPending ? '明日' : ''}</span>
+            <span class="icon">${ICONS.retweet}</span>
           </button>
           <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like" aria-label="覚えている">
             <span class="icon">${ICONS.heart}</span>
           </button>
           <button type="button" class="action-btn action-bookmark${bmPending ? ' active' : ''}" data-action="bookmark" aria-label="少し後でもう一度見る">
-            <span class="icon">${ICONS.bookmark}</span><span class="bm-label">${bmPending ? '保存' : ''}</span>
+            <span class="icon">${ICONS.bookmark}</span>
           </button>
         </div>
       </div>
@@ -122,15 +122,11 @@ export function setLikeButtonState(article, liked) {
 }
 
 export function setRetweetButtonState(article, pending) {
-  const btn = article.querySelector('.action-retweet');
-  btn.classList.toggle('active', pending);
-  btn.querySelector('.rt-label').textContent = pending ? '明日' : '';
+  article.querySelector('.action-retweet').classList.toggle('active', pending);
 }
 
 export function setBookmarkButtonState(article, pending) {
-  const btn = article.querySelector('.action-bookmark');
-  btn.classList.toggle('active', pending);
-  btn.querySelector('.bm-label').textContent = pending ? '保存' : '';
+  article.querySelector('.action-bookmark').classList.toggle('active', pending);
 }
 
 export function bumpCommentCount(article, delta) {
