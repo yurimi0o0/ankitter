@@ -2,6 +2,12 @@
 // interaction is wired via data-action attributes and handled by app.js
 // through event delegation.
 
+const ICONS = {
+  comment: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
+  retweet: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heart-path"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+};
+
 function hashHue(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -67,7 +73,7 @@ export function createPostElement({ card, source, isRetweet, liked, rtPending, t
   const answerBlurClass = answerMode === 'blur' ? ' blurred' : '';
 
   article.innerHTML = `
-    ${isRetweet ? '<div class="retweet-flag">🔁 もう一度見る</div>' : ''}
+    ${isRetweet ? `<div class="retweet-flag">${ICONS.retweet} もう一度見る</div>` : ''}
     <div class="post-row">
       ${avatarHtml(source, hue, initial)}
       <div class="post-body">
@@ -76,21 +82,18 @@ export function createPostElement({ card, source, isRetweet, liked, rtPending, t
           <span class="handle">@${escapeHtml(source ? source.handle : '')}</span>
         </div>
         <div class="post-question">${escapeHtml(card.question)}</div>
-        <div class="post-answer${answerBlurClass}" data-action="reveal-answer">
-          <span class="answer-text">${escapeHtml(card.answer)}</span>
-          <span class="answer-hint">タップして答えを表示</span>
-        </div>
+        <div class="post-answer${answerBlurClass}" data-action="reveal-answer"><span class="answer-text">${escapeHtml(card.answer)}</span><span class="answer-hint">タップして答えを表示</span></div>
         ${linkifyTags(card.tags)}
         ${commentsSectionHtml(tsvComment, userComments)}
         <div class="post-actions">
-          <button type="button" class="action-btn action-comment" data-action="toggle-comments">
-            <span class="icon">💬</span><span class="count">${userComments.length}</span>
+          <button type="button" class="action-btn action-comment" data-action="toggle-comments" aria-label="コメント">
+            <span class="icon">${ICONS.comment}</span><span class="count">${userComments.length || ''}</span>
           </button>
-          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet">
-            <span class="icon">🔁</span><span class="rt-label">${rtPending ? '予約済み' : ''}</span>
+          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet" aria-label="あとでもう一度見る">
+            <span class="icon">${ICONS.retweet}</span><span class="rt-label">${rtPending ? '予約済み' : ''}</span>
           </button>
-          <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like">
-            <span class="icon">${liked ? '❤️' : '🤍'}</span>
+          <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like" aria-label="覚えたい">
+            <span class="icon">${ICONS.heart}</span>
           </button>
         </div>
       </div>
@@ -105,7 +108,12 @@ export function createPostElement({ card, source, isRetweet, liked, rtPending, t
 export function setLikeButtonState(article, liked) {
   const btn = article.querySelector('.action-like');
   btn.classList.toggle('liked', liked);
-  btn.querySelector('.icon').textContent = liked ? '❤️' : '🤍';
+  if (liked) {
+    // retrigger the pop animation
+    btn.classList.remove('pop');
+    void btn.offsetWidth;
+    btn.classList.add('pop');
+  }
 }
 
 export function setRetweetButtonState(article, pending) {
@@ -116,5 +124,7 @@ export function setRetweetButtonState(article, pending) {
 
 export function bumpCommentCount(article, delta) {
   const el = article.querySelector('.action-comment .count');
-  el.textContent = String(Math.max(0, parseInt(el.textContent, 10) + delta));
+  const current = parseInt(el.textContent, 10) || 0;
+  const next = Math.max(0, current + delta);
+  el.textContent = next === 0 ? '' : String(next);
 }
