@@ -53,6 +53,12 @@ html[data-theme="light"] {
   box-sizing: border-box;
 }
 
+/* .onboarding etc. set display:flex, which would otherwise beat the UA's
+   [hidden] { display: none } rule. */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -168,8 +174,8 @@ button, input, select, textarea {
 
 .retweet-flag {
   font-size: 0.78rem;
-  color: var(--text-muted);
-  font-weight: 600;
+  color: var(--accent);
+  font-weight: 700;
   margin: 0 0 0.4rem 2.7rem;
 }
 
@@ -189,6 +195,18 @@ button, input, select, textarea {
   color: #fff;
   font-weight: 700;
   font-size: 1.05rem;
+}
+
+.avatar-img {
+  background: var(--border);
+  overflow: hidden;
+  padding: 0;
+}
+.avatar-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .post-body {
@@ -220,16 +238,14 @@ button, input, select, textarea {
 }
 
 .post-answer {
-  margin-top: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  margin-top: 0.4rem;
   font-size: 1rem;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-  position: relative;
+}
+.post-answer .answer-text {
+  font-weight: 700;
 }
 .post-answer .answer-hint {
   display: none;
@@ -383,6 +399,13 @@ button, input, select, textarea {
 }
 .action-retweet.active {
   color: var(--accent);
+  font-weight: 700;
+}
+.action-retweet.active .icon {
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+.rt-label {
+  font-size: 0.78rem;
 }
 .action-like.liked {
   color: var(--like);

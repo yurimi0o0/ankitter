@@ -47,7 +47,17 @@ export function commentsSectionHtml(tsvComment, userComments) {
     </div>`;
 }
 
-export function createPostElement({ card, source, isRetweet, liked, tsvComment, userComments, answerMode }) {
+function avatarHtml(source, hue, initial) {
+  if (source && source.icon) {
+    if (source.icon.startsWith('data:')) {
+      return `<div class="avatar avatar-img"><img src="${source.icon}" alt="" /></div>`;
+    }
+    return `<div class="avatar" style="background: hsl(${hue} 70% 45%)">${escapeHtml(source.icon)}</div>`;
+  }
+  return `<div class="avatar" style="background: hsl(${hue} 70% 45%)">${escapeHtml(initial)}</div>`;
+}
+
+export function createPostElement({ card, source, isRetweet, liked, rtPending, tsvComment, userComments, answerMode }) {
   const article = document.createElement('article');
   article.className = 'post';
   article.dataset.cardId = card.id;
@@ -59,7 +69,7 @@ export function createPostElement({ card, source, isRetweet, liked, tsvComment, 
   article.innerHTML = `
     ${isRetweet ? '<div class="retweet-flag">🔁 もう一度見る</div>' : ''}
     <div class="post-row">
-      <div class="avatar" style="background: hsl(${hue} 70% 45%)">${escapeHtml(initial)}</div>
+      ${avatarHtml(source, hue, initial)}
       <div class="post-body">
         <div class="post-header">
           <span class="display-name">${escapeHtml(source ? source.displayName : '')}</span>
@@ -76,8 +86,8 @@ export function createPostElement({ card, source, isRetweet, liked, tsvComment, 
           <button type="button" class="action-btn action-comment" data-action="toggle-comments">
             <span class="icon">💬</span><span class="count">${userComments.length}</span>
           </button>
-          <button type="button" class="action-btn action-retweet" data-action="retweet">
-            <span class="icon">🔁</span>
+          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet">
+            <span class="icon">🔁</span><span class="rt-label">${rtPending ? '予約済み' : ''}</span>
           </button>
           <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like">
             <span class="icon">${liked ? '❤️' : '🤍'}</span>
@@ -96,6 +106,12 @@ export function setLikeButtonState(article, liked) {
   const btn = article.querySelector('.action-like');
   btn.classList.toggle('liked', liked);
   btn.querySelector('.icon').textContent = liked ? '❤️' : '🤍';
+}
+
+export function setRetweetButtonState(article, pending) {
+  const btn = article.querySelector('.action-retweet');
+  btn.classList.toggle('active', pending);
+  btn.querySelector('.rt-label').textContent = pending ? '予約済み' : '';
 }
 
 export function bumpCommentCount(article, delta) {

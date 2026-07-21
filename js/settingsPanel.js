@@ -53,6 +53,10 @@ export function renderSettingsPanel(container, handlers) {
               <div class="source-meta">${escapeHtml(s.fileName)}</div>
             </div>
             <div class="source-actions">
+              <label class="btn-secondary btn-sm file-drop-inline">
+                アイコン
+                <input type="file" accept="image/*" data-action="icon" hidden />
+              </label>
               <button type="button" class="btn-secondary btn-sm" data-action="remap">列割り当て</button>
               <button type="button" class="btn-secondary btn-sm danger" data-action="delete">削除</button>
             </div>
@@ -86,6 +90,13 @@ export function renderSettingsPanel(container, handlers) {
   container.querySelector('#setting-add-source').addEventListener('click', () => handlers.openAddSource());
   container.querySelectorAll('.source-item').forEach((item) => {
     const sourceId = item.dataset.sourceId;
+    item.querySelector('input[data-action="icon"]').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const source = sources.find((s) => s.id === sourceId);
+      handlers.changeSourceIcon(source, file);
+      e.target.value = '';
+    });
     item.querySelector('[data-action="remap"]').addEventListener('click', () => {
       const source = sources.find((s) => s.id === sourceId);
       handlers.openRemapSource(source);
