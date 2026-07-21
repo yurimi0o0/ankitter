@@ -3,7 +3,7 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, setLikeButtonState, setRetweetButtonState, bumpCommentCount } from './render.js';
+import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, bumpCommentCount } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
@@ -73,7 +73,7 @@ function setupDialogBackdropClose(dialog) {
 
 // ---- Feed rendering ----
 
-async function appendPost(cardId, isRetweet) {
+async function appendPost(cardId, isRetweet, isBookmark) {
   const card = state.cardsById.get(cardId);
   if (!card) return;
   const source = state.sourcesById.get(card.sourceId);
@@ -82,8 +82,10 @@ async function appendPost(cardId, isRetweet) {
     card,
     source,
     isRetweet,
+    isBookmark,
     liked,
     rtPending: state.feedEngine ? state.feedEngine.isRetweetPending(cardId) : false,
+    bmPending: state.feedEngine ? state.feedEngine.isBookmarkPending(cardId) : false,
     tsvComment: card.tsvComment,
     userComments,
     answerMode: state.settings.answerMode,
@@ -102,7 +104,7 @@ async function loadMore(batches = 1) {
       const batch = await state.feedEngine.getNextBatch(BATCH_SIZE);
       if (batch.length === 0) break;
       for (const entry of batch) {
-        await appendPost(entry.cardId, entry.isRetweet);
+        await appendPost(entry.cardId, entry.isRetweet, entry.isBookmark);
         renderedAny = true;
       }
     }
@@ -184,6 +186,19 @@ async function handleFeedClick(e) {
     // The same card can appear multiple times in the feed — sync all copies.
     el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach((post) => {
       setRetweetButtonState(post, pending);
+    });
+    return;
+  }
+
+  if (action === 'bookmark') {
+    if (state.feedEngine.isBookmarkPending(cardId)) {
+      await state.feedEngine.cancelBookmark(cardId);
+    } else {
+      await state.feedEngine.addBookmark(cardId);
+    }
+    const pending = state.feedEngine.isBookmarkPending(cardId);
+    el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach((post) => {
+      setBookmarkButtonState(post, pending);
     });
     return;
   }
