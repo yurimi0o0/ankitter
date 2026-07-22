@@ -3,6 +3,7 @@
 // and re-mapping an existing deck's columns.
 
 import { parseTSV, ROLES, ROLE_LABELS, nameFromFileName } from './tsv.js';
+import { normalizeMediaSettings } from './media.js';
 
 const ROLE_OPTIONS = [ROLES.QUESTION, ROLES.ANSWER, ROLES.COMMENT, ROLES.TAG, ROLES.IGNORE];
 const PREVIEW_ROW_COUNT = 3;
@@ -47,12 +48,14 @@ function renderStep(container, state, handlers) {
       const rawText = await readFileAsText(file);
       const { rows, columnCount } = parseTSV(rawText);
       const { displayName, handle } = nameFromFileName(file.name);
+      const mapping = guessDefaultMapping(columnCount);
       handlers.onFileLoaded({
         fileName: file.name,
         rawText,
         rows,
         columnCount,
-        mapping: guessDefaultMapping(columnCount),
+        mapping,
+        mediaSettings: normalizeMediaSettings(null, mapping),
         displayName,
         handle,
       });
@@ -73,11 +76,15 @@ function renderStep(container, state, handlers) {
       const options = ROLE_OPTIONS.map(
         (role) => `<option value="${role}" ${state.mapping[colIndex] === role ? 'selected' : ''}>${ROLE_LABELS[role]}</option>`
       ).join('');
+      const role = state.mapping[colIndex];
+      const mediaDisabled = role === ROLES.QUESTION || role === ROLES.ANSWER;
+      const mediaChecked = !mediaDisabled && state.mediaSettings.columns[colIndex];
       return `
         <tr>
           <td class="col-index">列${colIndex + 1}</td>
           <td class="col-preview">${samples || '<span class="muted">(空)</span>'}</td>
           <td class="col-role"><select data-col="${colIndex}">${options}</select></td>
+          <td class="col-media"><label class="media-col-toggle"><input type="checkbox" data-media-col="${colIndex}" ${mediaChecked ? 'checked' : ''} ${mediaDisabled || !state.mediaSettings.enabled ? 'disabled' : ''} />使う</label></td>
         </tr>`;
     })
     .join('');
@@ -93,9 +100,10 @@ function renderStep(container, state, handlers) {
         <input type="text" class="handle-input" value="${escapeHtml(state.handle)}" maxlength="40" />
       </div>
       <p class="import-help">各列の役割を選んでください（${state.rows.length}行を検出）</p>
+      <label class="media-enable-row"><input type="checkbox" class="media-enabled-input" ${state.mediaSettings.enabled ? 'checked' : ''} /> メディアカードを作成する</label>
       <div class="mapping-table-wrap">
         <table class="mapping-table">
-          <thead><tr><th></th><th>プレビュー</th><th>役割</th></tr></thead>
+          <thead><tr><th></th><th>プレビュー</th><th>役割</th><th>メディアに使う</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>
@@ -115,6 +123,18 @@ function renderStep(container, state, handlers) {
     select.addEventListener('change', (e) => {
       const col = parseInt(e.target.dataset.col, 10);
       state.mapping[col] = e.target.value;
+      if (e.target.value === ROLES.QUESTION || e.target.value === ROLES.ANSWER) state.mediaSettings.columns[col] = false;
+      renderStep(container, state, handlers);
+    });
+  });
+  container.querySelector('.media-enabled-input').addEventListener('change', (e) => {
+    state.mediaSettings.enabled = e.target.checked;
+    renderStep(container, state, handlers);
+  });
+  container.querySelectorAll('input[data-media-col]').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const col = parseInt(e.target.dataset.mediaCol, 10);
+      state.mediaSettings.columns[col] = e.target.checked;
     });
   });
   container.querySelector('[data-action="save"]').addEventListener('click', () => {
@@ -130,6 +150,7 @@ function renderStep(container, state, handlers) {
       fileName: state.fileName,
       rawText: state.rawText,
       mapping: state.mapping,
+      mediaSettings: normalizeMediaSettings(state.mediaSettings, state.mapping),
       displayName: state.displayName.trim(),
       handle: state.handle.trim().replace(/\s+/g, '_'),
     });
@@ -158,12 +179,14 @@ export function mountImportFlow(container, options = {}) {
 export function mountRemapFlow(container, options = {}) {
   const { source } = options;
   const { rows, columnCount } = parseTSV(source.rawText);
+  const mapping = Array.from({ length: columnCount }, (_, i) => source.mapping[i] || ROLES.IGNORE);
   const state = {
     fileName: source.fileName,
     rawText: source.rawText,
     rows,
     columnCount,
-    mapping: source.mapping.slice(),
+    mapping,
+    mediaSettings: normalizeMediaSettings(source.mediaSettings, mapping),
     displayName: source.displayName,
     handle: source.handle,
     allowCancel: true,

@@ -464,7 +464,7 @@ function openImportDialog({ mode, source }) {
           displayName: payload.displayName,
           handle: payload.handle,
         });
-        await repo.updateSourceMapping(source.id, payload.mapping);
+        await repo.updateSourceMapping(source.id, payload.mapping, payload.mediaSettings);
         await onDone();
       },
       onCancel: () => closeDialog(el.importDialog),
