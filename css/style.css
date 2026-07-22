@@ -845,6 +845,22 @@ button, input, select, textarea {
   border-radius: var(--radius-md);
   margin-bottom: 1rem;
 }
+
+.media-enable-row,
+.media-col-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.media-enable-row {
+  margin: 0 0 0.8rem;
+}
+.col-media {
+  white-space: nowrap;
+}
+
 .mapping-table {
   width: 100%;
   border-collapse: collapse;
