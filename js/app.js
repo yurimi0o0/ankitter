@@ -175,6 +175,10 @@ function forEachCardCopy(cardId, fn) {
   el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
 }
 
+function updateActionCountForAllCopies(cardId, actionClass, count) {
+  forEachCardCopy(cardId, (post) => setActionCount(post, actionClass, count));
+}
+
 async function handleFeedClick(e) {
   const actionEl = e.target.closest('[data-action]');
   if (!actionEl) return;
@@ -197,47 +201,40 @@ async function handleFeedClick(e) {
   }
 
   if (action === 'like') {
-    const nowLiked = !actionEl.classList.contains('liked');
-    // setLiked returns the updated stats (likes bumped only when turning on).
-    const stats = await repo.setLiked(cardId, nowLiked);
-    forEachCardCopy(cardId, (post) => {
-      setLikeButtonState(post, nowLiked);
-      setActionCount(post, 'action-like', stats.likes);
-    });
+    const wasLiked = article.dataset.likeActive === 'true';
+    const nowLiked = !wasLiked;
+    const stats = await repo.changeStat(cardId, 'likes', nowLiked ? 1 : -1);
+    await repo.setLikeSuppression(cardId, nowLiked);
+    setLikeButtonState(article, nowLiked);
+    updateActionCountForAllCopies(cardId, 'action-like', stats.likes);
     return;
   }
 
   if (action === 'retweet') {
-    // Toggle: tapping again before the card resurfaces cancels the reservation.
-    const wasPending = state.feedEngine.isRetweetPending(cardId);
-    if (wasPending) {
-      await state.feedEngine.cancelRetweet(cardId);
-    } else {
+    const wasRetweeted = article.dataset.retweetActive === 'true';
+    const nowRetweeted = !wasRetweeted;
+    if (nowRetweeted) {
       await state.feedEngine.addRetweet(cardId);
+    } else {
+      await state.feedEngine.cancelRetweet(cardId);
     }
-    // Count the tap only when actually retweeting (not on cancel).
-    const stats = wasPending ? null : await repo.bumpStat(cardId, 'retweets');
-    const pending = state.feedEngine.isRetweetPending(cardId);
-    forEachCardCopy(cardId, (post) => {
-      setRetweetButtonState(post, pending);
-      if (stats) setActionCount(post, 'action-retweet', stats.retweets);
-    });
+    const stats = await repo.changeStat(cardId, 'retweets', nowRetweeted ? 1 : -1);
+    setRetweetButtonState(article, nowRetweeted);
+    updateActionCountForAllCopies(cardId, 'action-retweet', stats.retweets);
     return;
   }
 
   if (action === 'bookmark') {
-    const wasPending = state.feedEngine.isBookmarkPending(cardId);
-    if (wasPending) {
-      await state.feedEngine.cancelBookmark(cardId);
+    const wasBookmarked = article.dataset.bookmarkActive === 'true';
+    const nowBookmarked = !wasBookmarked;
+    if (nowBookmarked) {
+      if (!state.feedEngine.isBookmarkPending(cardId)) await state.feedEngine.addBookmark(cardId);
     } else {
-      await state.feedEngine.addBookmark(cardId);
+      await state.feedEngine.cancelBookmark(cardId);
     }
-    const stats = wasPending ? null : await repo.bumpStat(cardId, 'bookmarks');
-    const pending = state.feedEngine.isBookmarkPending(cardId);
-    forEachCardCopy(cardId, (post) => {
-      setBookmarkButtonState(post, pending);
-      if (stats) setActionCount(post, 'action-bookmark', stats.bookmarks);
-    });
+    const stats = await repo.changeStat(cardId, 'bookmarks', nowBookmarked ? 1 : -1);
+    setBookmarkButtonState(article, nowBookmarked);
+    updateActionCountForAllCopies(cardId, 'action-bookmark', stats.bookmarks);
     return;
   }
 

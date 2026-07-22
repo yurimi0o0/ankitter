@@ -139,6 +139,14 @@ export async function setLiked(cardId, liked) {
   return getStats(cardId);
 }
 
+export async function setLikeSuppression(cardId, suppressed) {
+  if (suppressed) {
+    await dbPut(STORES.likes, { cardId, likedAt: Date.now() });
+  } else {
+    await dbDelete(STORES.likes, cardId);
+  }
+}
+
 // ---- Retweets (~10 posts one-shot reinsert; post-count based) ----
 
 export async function getAllRetweets() {
@@ -179,8 +187,12 @@ export async function getStats(cardId) {
 // Increments one counter and returns the full updated stats. Never decrements —
 // these are "how many times so far" totals.
 export async function bumpStat(cardId, field) {
+  return changeStat(cardId, field, 1);
+}
+
+export async function changeStat(cardId, field, delta) {
   const stats = await getStats(cardId);
-  stats[field] = (stats[field] || 0) + 1;
+  stats[field] = Math.max(0, (stats[field] || 0) + delta);
   await dbPut(STORES.stats, stats);
   return stats;
 }
