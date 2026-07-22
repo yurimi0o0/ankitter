@@ -50,6 +50,15 @@ export async function updateSourceMapping(sourceId, mapping) {
   return source;
 }
 
+export async function updateSourceMeta(sourceId, { displayName, handle }) {
+  const source = await dbGet(STORES.sources, sourceId);
+  if (!source) throw new Error('source not found');
+  source.displayName = displayName;
+  source.handle = handle;
+  await dbPut(STORES.sources, source);
+  return source;
+}
+
 // icon: a data: URL image or a short emoji/text string; null clears it.
 export async function updateSourceIcon(sourceId, icon) {
   const source = await dbGet(STORES.sources, sourceId);
@@ -85,7 +94,13 @@ async function regenerateCards(source) {
 // ---- Cards ----
 
 export async function getAllCards() {
-  return dbGetAll(STORES.cards);
+  const cards = await dbGetAll(STORES.cards);
+  if (cards.length > 0 && cards.some((card) => !Array.isArray(card.mediaFields))) {
+    const sources = await getSources();
+    for (const source of sources) await regenerateCards(source);
+    return dbGetAll(STORES.cards);
+  }
+  return cards;
 }
 
 export async function getCard(cardId) {

@@ -11,6 +11,8 @@ const LIKE_SUPPRESS_MS = 7 * 24 * 60 * 60 * 1000; // ♡: hide from rotation thi
 const BOOKMARK_DELAY_MS = 24 * 60 * 60 * 1000;    // 🔖 保存: resurface after ~1 day
 const RETWEET_DELAY_POSTS = 10;                    // 🔁 RT: reinsert after ~10 posts
 const PRIORITY_SPREAD = 4; // 1 priority card every (spread+1) posts near the front
+const MEDIA_MIN_GAP = 10;
+const MEDIA_MAX_GAP = 15;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -33,20 +35,27 @@ function interleaveFront(priority, rest, spread) {
 }
 
 export class FeedEngine {
-  constructor(cardIds) {
-    this.allCardIds = cardIds;
+  constructor(cards) {
+    this.setCards(cards);
     this.cycleQueue = []; // [{ cardId, kind: 'normal' | 'bm' }]
+    this.mediaQueue = [];
+    this.mediaCountdown = randomMediaGap();
     this.pendingRetweets = []; // [{ id, cardId, remaining }] — post-count countdown
     this.activeBookmarks = new Map(); // cardId -> db id (waiting for their 24h)
   }
 
   static async create() {
     const cards = await repo.getAllCards();
-    const engine = new FeedEngine(cards.map((c) => c.id));
+    const engine = new FeedEngine(cards);
     const [retweets, bookmarks] = await Promise.all([repo.getAllRetweets(), repo.getAllBookmarks()]);
     engine.pendingRetweets = retweets.map((r) => ({ id: r.id, cardId: r.cardId, remaining: r.remaining }));
     for (const b of bookmarks) engine.activeBookmarks.set(b.cardId, b.id);
     return engine;
+  }
+
+  setCards(cards) {
+    this.allCardIds = cards.map((c) => c.id);
+    this.mediaCardIds = cards.filter((c) => hasMediaCardData(c)).map((c) => c.id);
   }
 
   setCardIds(cardIds) {
@@ -58,6 +67,8 @@ export class FeedEngine {
     for (const cardId of this.activeBookmarks.keys()) {
       if (!valid.has(cardId)) this.activeBookmarks.delete(cardId);
     }
+    this.mediaCardIds = this.mediaCardIds.filter((id) => valid.has(id));
+    this.mediaQueue = this.mediaQueue.filter((id) => valid.has(id));
   }
 
   hasCards() {
@@ -133,16 +144,35 @@ export class FeedEngine {
     await repo.removeBookmark(dbId);
   }
 
-  // Returns up to n upcoming feed entries: { cardId, isRetweet, isBookmark }
+  takeMediaEntryIfDue() {
+    if (this.mediaCountdown > 0 || this.mediaCardIds.length === 0) return null;
+    if (this.mediaQueue.length === 0) this.mediaQueue = shuffle(this.mediaCardIds);
+    const cardId = this.mediaQueue.shift();
+    this.mediaCountdown = randomMediaGap();
+    return { cardId, isRetweet: false, isBookmark: false, isMedia: true };
+  }
+
+  tickMediaCountdown() {
+    if (this.mediaCardIds.length > 0 && this.mediaCountdown > 0) this.mediaCountdown--;
+  }
+
+  // Returns up to n upcoming feed entries: { cardId, isRetweet, isBookmark, isMedia }
   async getNextBatch(n) {
     const batch = [];
     for (let i = 0; i < n; i++) {
+      const mediaEntry = this.takeMediaEntryIfDue();
+      if (mediaEntry) {
+        batch.push(mediaEntry);
+        continue;
+      }
+
       for (const r of this.pendingRetweets) r.remaining--;
       const dueIndex = this.pendingRetweets.findIndex((r) => r.remaining <= 0);
       if (dueIndex !== -1) {
         const [due] = this.pendingRetweets.splice(dueIndex, 1);
         repo.removeRetweet(due.id);
-        batch.push({ cardId: due.cardId, isRetweet: true, isBookmark: false });
+        batch.push({ cardId: due.cardId, isRetweet: true, isBookmark: false, isMedia: false });
+        this.tickMediaCountdown();
         continue;
       }
 
@@ -158,8 +188,17 @@ export class FeedEngine {
         this.activeBookmarks.delete(entry.cardId);
         if (dbId !== undefined) repo.removeBookmark(dbId);
       }
-      batch.push({ cardId: entry.cardId, isRetweet: false, isBookmark });
+      batch.push({ cardId: entry.cardId, isRetweet: false, isBookmark, isMedia: false });
+      this.tickMediaCountdown();
     }
     return batch;
   }
+}
+
+function hasMediaCardData(card) {
+  return (card.mediaFields || []).some((field) => field.text || (field.images && field.images.length > 0));
+}
+
+function randomMediaGap() {
+  return MEDIA_MIN_GAP + Math.floor(Math.random() * (MEDIA_MAX_GAP - MEDIA_MIN_GAP + 1));
 }
