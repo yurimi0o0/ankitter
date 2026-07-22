@@ -3,6 +3,7 @@
 // and re-mapping an existing deck's columns.
 
 import { parseTSV, ROLES, ROLE_LABELS, nameFromFileName } from './tsv.js';
+import { defaultMediaColumns, normalizeMediaColumns } from './media.js';
 
 const ROLE_OPTIONS = [ROLES.QUESTION, ROLES.ANSWER, ROLES.COMMENT, ROLES.TAG, ROLES.IGNORE];
 const PREVIEW_ROW_COUNT = 3;
@@ -13,14 +14,6 @@ function guessDefaultMapping(columnCount) {
   if (columnCount > 1) mapping[1] = ROLES.ANSWER;
   if (columnCount > 2) mapping[2] = ROLES.COMMENT;
   return mapping;
-}
-
-function defaultMediaColumns(columnCount) {
-  return new Array(columnCount).fill(true);
-}
-
-function normalizeMediaColumns(state) {
-  return Array.from({ length: state.columnCount }, (_, i) => state.mapping[i] !== ROLES.QUESTION && state.mapping[i] !== ROLES.ANSWER && state.mediaColumns[i] !== false);
 }
 
 function readFileAsText(file) {
@@ -170,7 +163,11 @@ function renderStep(container, state, handlers) {
       displayName: state.displayName.trim(),
       handle: state.handle.trim().replace(/\s+/g, '_'),
       mediaEnabled: state.mediaEnabled,
-      mediaColumns: normalizeMediaColumns(state),
+      mediaColumns: normalizeMediaColumns({
+        ...state,
+        questionRole: ROLES.QUESTION,
+        answerRole: ROLES.ANSWER,
+      }),
     });
   });
   const cancelBtn = container.querySelector('[data-action="cancel"]');
