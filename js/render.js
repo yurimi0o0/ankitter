@@ -74,6 +74,9 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   const article = document.createElement('article');
   article.className = 'post';
   article.dataset.cardId = card.id;
+  article.dataset.likeActive = 'false';
+  article.dataset.retweetActive = 'false';
+  article.dataset.bookmarkActive = 'false';
 
   const hue = hashHue(source ? source.handle : 'deck');
   const initial = (source ? source.displayName : '?').charAt(0).toUpperCase();
@@ -97,16 +100,16 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
           <button type="button" class="action-btn action-comment" data-action="toggle-comments" aria-label="コメント">
             <span class="icon">${ICONS.comment}</span><span class="count">${countText(userComments.length)}</span>
           </button>
-          <button type="button" class="action-btn action-retweet${rtPending ? ' active' : ''}" data-action="retweet" aria-label="すぐまた見る">
+          <button type="button" class="action-btn action-retweet" data-action="retweet" aria-label="すぐまた見る">
             <span class="icon">${ICONS.retweet}</span><span class="count">${countText(s.retweets)}</span>
           </button>
-          <button type="button" class="action-btn action-like${liked ? ' liked' : ''}" data-action="like" aria-label="覚えた">
+          <button type="button" class="action-btn action-like" data-action="like" aria-label="覚えた">
             <span class="icon">${ICONS.heart}</span><span class="count">${countText(s.likes)}</span>
           </button>
           <div class="action-btn action-stat" aria-label="表示回数">
             <span class="icon">${ICONS.chart}</span><span class="count">${countText(s.impressions)}</span>
           </div>
-          <button type="button" class="action-btn action-bookmark${bmPending ? ' active' : ''}" data-action="bookmark" aria-label="後で見返す">
+          <button type="button" class="action-btn action-bookmark" data-action="bookmark" aria-label="後で見返す">
             <span class="icon">${ICONS.bookmark}</span><span class="count">${countText(s.bookmarks)}</span>
           </button>
         </div>
@@ -120,6 +123,7 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
 }
 
 export function setLikeButtonState(article, liked) {
+  article.dataset.likeActive = String(liked);
   const btn = article.querySelector('.action-like');
   btn.classList.toggle('liked', liked);
   if (liked) {
@@ -131,10 +135,12 @@ export function setLikeButtonState(article, liked) {
 }
 
 export function setRetweetButtonState(article, pending) {
+  article.dataset.retweetActive = String(pending);
   article.querySelector('.action-retweet').classList.toggle('active', pending);
 }
 
 export function setBookmarkButtonState(article, pending) {
+  article.dataset.bookmarkActive = String(pending);
   article.querySelector('.action-bookmark').classList.toggle('active', pending);
 }
 
