@@ -3,13 +3,16 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, createMediaPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
+import { createPostElement, createRecapPostElement, computeConfidence, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
 
 const BATCH_SIZE = 8;
 const INITIAL_FILL_BATCHES = 2;
+const GAUGE_MIN_IMPRESSIONS = 2;
+const GAUGE_CHANCE = 0.12;
+const RECAP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const el = {
   onboarding: document.getElementById('onboarding'),
@@ -85,6 +88,14 @@ async function appendPost(cardId, isRetweet, isBookmark) {
     repo.getUserComments(cardId),
     repo.recordImpression(cardId),
   ]);
+  // The "覚えた実感" gauge is a rare (12%) decoration on posts that have
+  // enough view history to make the percentage meaningful — not a separate
+  // scheduled entity, just a per-render roll for whichever card was picked.
+  const gauge =
+    stats.impressions >= GAUGE_MIN_IMPRESSIONS && Math.random() < GAUGE_CHANCE
+      ? { percent: computeConfidence(stats, liked, cardId) }
+      : null;
+
   const article = createPostElement({
     card,
     source,
@@ -97,16 +108,22 @@ async function appendPost(cardId, isRetweet, isBookmark) {
     userComments,
     answerMode: state.settings.answerMode,
     stats,
+    gauge,
   });
   el.feedList.appendChild(article);
   repo.addViewHistory(cardId);
 }
 
-async function appendMediaPost(cardId) {
-  const card = state.cardsById.get(cardId);
-  if (!card) return;
-  const source = state.sourcesById.get(card.sourceId);
-  const article = createMediaPostElement({ card, source });
+async function appendRecapPost() {
+  const [weeklyViews, likes, bookmarks, totalImpressions] = await Promise.all([
+    repo.getViewCountSince(Date.now() - RECAP_WINDOW_MS),
+    repo.getAllLikes(),
+    repo.getAllBookmarks(),
+    repo.getTotalImpressions(),
+  ]);
+  const article = createRecapPostElement({
+    data: { weeklyViews, likeCount: likes.length, bookmarkCount: bookmarks.length, totalImpressions },
+  });
   el.feedList.appendChild(article);
 }
 
@@ -120,7 +137,7 @@ async function loadMore(batches = 1) {
       const batch = await state.feedEngine.getNextBatch(BATCH_SIZE);
       if (batch.length === 0) break;
       for (const entry of batch) {
-        if (entry.isMedia) await appendMediaPost(entry.cardId);
+        if (entry.isRecap) await appendRecapPost();
         else await appendPost(entry.cardId, entry.isRetweet, entry.isBookmark);
         renderedAny = true;
       }
@@ -178,11 +195,11 @@ function findPostContext(target) {
   return { article, cardId: article.dataset.cardId };
 }
 
-// Applies fn to every rendered copy of a card that has an action bar (the
-// same card can appear more than once in an infinite feed, and can also
-// appear as a non-interactive .media-post teaser, which has no actions).
+// Applies fn to every rendered copy of a card (the same card can appear
+// more than once in an infinite feed). The recap card is card-less (no
+// data-card-id), so it's never matched here — no exclusion needed.
 function forEachCardCopy(cardId, fn) {
-  el.feedList.querySelectorAll(`.post:not(.media-post)[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
+  el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
 }
 
 function updateActionCountForAllCopies(cardId, actionClass, count) {

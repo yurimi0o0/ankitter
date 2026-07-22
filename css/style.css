@@ -334,8 +334,7 @@ button, input, select, textarea {
   gap: 0.45rem;
   margin-top: 0.55rem;
 }
-.inline-image-grid:empty,
-.media-card-images:empty {
+.inline-image-grid:empty {
   display: none;
 }
 .inline-image-grid img {
@@ -345,6 +344,14 @@ button, input, select, textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+/* Occasionally chosen at render time to make a card's photo the focal
+   point, Twitter-photo-tweet style. Layout-only, no gradient. */
+.inline-image-grid.emphasized {
+  grid-template-columns: 1fr;
+}
+.inline-image-grid.emphasized img {
+  max-height: 360px;
 }
 
 .post-tags {
@@ -358,91 +365,148 @@ button, input, select, textarea {
   color: var(--accent);
 }
 
-.media-post {
-  background:
-    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 35%),
-    var(--bg);
+/* Media attachment: supplementary TSV fields (comment/tag/etc.) shown
+   inline on the same interactive post, like a photo attached to a tweet.
+   Flat color only, no gradients. */
+.post-attachment {
+  margin-top: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
-.media-card {
-  margin-top: 0.55rem;
-  padding: 1rem;
-  border: 1px solid color-mix(in srgb, hsl(var(--media-hue) 75% 55%) 38%, var(--border));
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, hsl(var(--media-hue) 80% 42%) 20%, transparent), transparent 52%),
-    color-mix(in srgb, var(--surface) 86%, var(--bg));
-  box-shadow: var(--shadow);
-}
-.media-card-kicker {
-  width: fit-content;
-  margin-bottom: 0.55rem;
-  padding: 0.18rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 999px;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-.media-card-title {
-  margin: 0;
-  font-size: 1.15rem;
-  line-height: 1.4;
-  letter-spacing: -0.02em;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.media-card-answer {
-  margin-top: 0.45rem;
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.media-card-fields {
+.post-attachment-fields {
   display: grid;
   gap: 0.55rem;
-  margin-top: 0.8rem;
 }
-.media-card-field {
-  padding: 0.65rem 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: var(--radius-md);
+.post-attachment-field {
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg) 65%, transparent);
 }
-.media-card-label {
-  margin-bottom: 0.25rem;
+.post-attachment-label {
+  margin-bottom: 0.2rem;
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 700;
 }
-.media-card-field p {
+.post-attachment-field p {
   margin: 0;
-  line-height: 1.55;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.media-card-images {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.7rem;
-}
-.media-card-images img {
-  width: 100%;
-  max-height: 280px;
-  object-fit: cover;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-}
-.media-card-images-small {
+.post-attachment-images-small {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
 }
-.media-card-images-small img {
-  max-height: 180px;
+.post-attachment-images-small img {
+  max-height: 160px;
+}
+.post-attachment-quote {
+  position: relative;
+  padding: 0.9rem 1rem 0.9rem 2rem;
+  text-align: center;
+}
+.post-attachment-quote::before {
+  content: "\201C";
+  position: absolute;
+  top: -0.3rem;
+  left: 0.5rem;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--accent) 45%, transparent);
+  line-height: 1;
+}
+.post-attachment-quote-text {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 覚えた実感 gauge: a rare, per-render decoration on a normal post's
+   answer, derived from that card's own real stats. Flat fill, no gradient. */
+.confidence-gauge {
+  margin-top: 0.6rem;
+  /* .post-answer is white-space: pre-wrap (to preserve the answer's own
+     line breaks); without resetting it here, the gauge markup's own
+     template indentation would inherit pre-wrap and render as blank
+     lines between its block-level children. */
+  white-space: normal;
+}
+.confidence-gauge-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+  overflow: hidden;
+}
+.confidence-gauge-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+.confidence-gauge-label {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* 学習レポート: a card-less recap post, flat color, no action bar. */
+.recap-avatar {
+  font-size: 1.2rem;
+}
+.recap-card {
+  margin-top: 0.55rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--like) 6%, var(--surface));
+}
+.recap-card-kicker {
+  width: fit-content;
+  margin-bottom: 0.7rem;
+  padding: 0.18rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--like) 55%, transparent);
+  border-radius: 999px;
+  color: var(--like);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.recap-card-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+.recap-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.6rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+  text-align: center;
+}
+.recap-tile-icon svg {
+  display: block;
+}
+.recap-tile-value {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+.recap-tile-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.recap-card-footnote {
+  margin-top: 0.7rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
 }
 
 .post-comments {
@@ -591,9 +655,12 @@ button, input, select, textarea {
   margin-top: 0.4rem;
   display: flex;
   align-items: center;
-  /* Left-aligned with a fixed gap (not space-between): the per-card count
-     values differ, and space-between would shift icons as widths change. */
-  gap: 0.6rem;
+  /* space-between spreads the 5 icons across the full post width (closer to
+     Twitter's spacing); gap is a floor so they never crowd on narrow posts.
+     Each .action-btn reserves a min-width so a count changing from 1 to 2
+     digits doesn't nudge the other icons' positions. */
+  justify-content: space-between;
+  gap: 0.4rem;
   margin-left: -0.5rem;
 }
 .action-btn {
@@ -606,6 +673,7 @@ button, input, select, textarea {
   font-size: 0.82rem;
   cursor: pointer;
   padding: 0.5rem;
+  min-width: 2.75rem;
   min-height: 40px;
   border-radius: 999px;
   transition: color 0.12s ease, background 0.12s ease;
