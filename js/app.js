@@ -436,7 +436,7 @@ async function refreshFeedForDataChange() {
 // ---- Import dialog (add / remap) ----
 
 function openImportDialog({ mode, source }) {
-  el.importDialogTitle.textContent = mode === 'remap' ? '列割り当てを変更' : 'TSVを追加';
+  el.importDialogTitle.textContent = mode === 'remap' ? 'TSVを編集' : 'TSVを追加';
   el.importDialogContent.innerHTML = '';
 
   const onDone = async () => {
@@ -449,8 +449,12 @@ function openImportDialog({ mode, source }) {
   if (mode === 'remap') {
     mountRemapFlow(el.importDialogContent, {
       source,
-      onSave: async (mapping) => {
-        await repo.updateSourceMapping(source.id, mapping);
+      onSave: async (payload) => {
+        await repo.updateSourceMeta(source.id, {
+          displayName: payload.displayName,
+          handle: payload.handle,
+        });
+        await repo.updateSourceMapping(source.id, payload.mapping);
         await onDone();
       },
       onCancel: () => closeDialog(el.importDialog),
