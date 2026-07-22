@@ -3,7 +3,7 @@
 
 import * as repo from './repo.js';
 import { FeedEngine } from './feed.js';
-import { createPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
+import { createPostElement, createMediaPostElement, setLikeButtonState, setRetweetButtonState, setBookmarkButtonState, setActionCount, bumpCommentCount } from './render.js';
 import { mountImportFlow, mountRemapFlow } from './importFlow.js';
 import { renderSettingsPanel } from './settingsPanel.js';
 import { downloadBackup, restoreBackupFromFile } from './backup.js';
@@ -102,6 +102,14 @@ async function appendPost(cardId, isRetweet, isBookmark) {
   repo.addViewHistory(cardId);
 }
 
+async function appendMediaPost(cardId) {
+  const card = state.cardsById.get(cardId);
+  if (!card) return;
+  const source = state.sourcesById.get(card.sourceId);
+  const article = createMediaPostElement({ card, source });
+  el.feedList.appendChild(article);
+}
+
 async function loadMore(batches = 1) {
   if (state.isLoading || !state.feedEngine) return;
   state.isLoading = true;
@@ -112,7 +120,8 @@ async function loadMore(batches = 1) {
       const batch = await state.feedEngine.getNextBatch(BATCH_SIZE);
       if (batch.length === 0) break;
       for (const entry of batch) {
-        await appendPost(entry.cardId, entry.isRetweet, entry.isBookmark);
+        if (entry.isMedia) await appendMediaPost(entry.cardId);
+        else await appendPost(entry.cardId, entry.isRetweet, entry.isBookmark);
         renderedAny = true;
       }
     }
@@ -424,6 +433,7 @@ async function refreshFeedForDataChange() {
   el.feedSection.hidden = false;
 
   if (state.feedEngine) {
+    state.feedEngine.setCards(Array.from(state.cardsById.values()));
     state.feedEngine.setCardIds(Array.from(state.cardsById.keys()));
   }
   resetFeedDOM();

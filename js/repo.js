@@ -94,7 +94,13 @@ async function regenerateCards(source) {
 // ---- Cards ----
 
 export async function getAllCards() {
-  return dbGetAll(STORES.cards);
+  const cards = await dbGetAll(STORES.cards);
+  if (cards.length > 0 && cards.some((card) => !Array.isArray(card.mediaFields))) {
+    const sources = await getSources();
+    for (const source of sources) await regenerateCards(source);
+    return dbGetAll(STORES.cards);
+  }
+  return cards;
 }
 
 export async function getCard(cardId) {
