@@ -299,9 +299,15 @@ button, input, select, textarea {
   cursor: pointer;
   user-select: none;
 }
-.post-answer.blurred .answer-text {
+.post-answer.blurred .answer-text,
+.post-answer.blurred .answer-media {
   filter: blur(7px);
   transition: filter 0.15s ease;
+}
+.post-answer.blurred .answer-media {
+  /* Also hides file names / alt text a screen reader or long-press menu
+     could otherwise leak before the answer is revealed. */
+  pointer-events: none;
 }
 .post-answer.blurred .answer-hint {
   display: block;
@@ -313,8 +319,10 @@ button, input, select, textarea {
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
 }
-.post-answer.blurred.revealed .answer-text {
+.post-answer.blurred.revealed .answer-text,
+.post-answer.blurred.revealed .answer-media {
   filter: none;
+  pointer-events: auto;
 }
 .post-answer.blurred.revealed .answer-hint {
   display: none;

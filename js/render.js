@@ -116,8 +116,11 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
         </div>
         <div class="post-question">${escapeHtml(card.question)}</div>
         ${mediaImagesHtml(card.questionImages)}
-        <div class="post-answer${answerBlurClass}" data-action="reveal-answer"><span class="answer-text">${escapeHtml(card.answer)}</span><span class="answer-hint">タップして答えを表示</span></div>
-        ${mediaImagesHtml(card.answerImages)}
+        <div class="post-answer${answerBlurClass}" data-action="reveal-answer">
+          <span class="answer-text">${escapeHtml(card.answer)}</span>
+          ${mediaImagesHtml(card.answerImages, 'inline-image-grid answer-media')}
+          <span class="answer-hint">タップして答えを表示</span>
+        </div>
         ${linkifyTags(card.tags)}
         ${commentsSectionHtml(tsvComment, userComments)}
         <div class="post-actions">
@@ -143,6 +146,16 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
 
   article.querySelector('.post-comments').classList.add('collapsed');
   attachImageFallback(article);
+
+  // Reflect the card's actual state (from DB) on the freshly-built DOM.
+  // Without this, a card that resurfaces (RT reinsertion, a due bookmark,
+  // a repeat in a small deck) would render as unliked/inactive even though
+  // it's still liked/pending, and the next tap would double-count it.
+  // (Uses the silent setter, not setLikeButtonState, so the "just liked"
+  // pop animation only ever plays in response to an actual tap.)
+  applyLikeState(article, !!liked);
+  setRetweetButtonState(article, !!rtPending);
+  setBookmarkButtonState(article, !!bmPending);
 
   return article;
 }
@@ -190,12 +203,19 @@ function mediaFieldHtml(field) {
     </section>`;
 }
 
-export function setLikeButtonState(article, liked) {
+// Media-post teasers share a card's id but have no action bar at all, so
+// these setters are no-ops on them rather than throwing on a null lookup.
+function applyLikeState(article, liked) {
   article.dataset.likeActive = String(liked);
-  const btn = article.querySelector('.action-like');
-  btn.classList.toggle('liked', liked);
+  article.querySelector('.action-like')?.classList.toggle('liked', liked);
+}
+
+export function setLikeButtonState(article, liked) {
+  applyLikeState(article, liked);
   if (liked) {
-    // retrigger the pop animation
+    // retrigger the pop animation (tap feedback only, not initial render)
+    const btn = article.querySelector('.action-like');
+    if (!btn) return;
     btn.classList.remove('pop');
     void btn.offsetWidth;
     btn.classList.add('pop');
@@ -204,12 +224,12 @@ export function setLikeButtonState(article, liked) {
 
 export function setRetweetButtonState(article, pending) {
   article.dataset.retweetActive = String(pending);
-  article.querySelector('.action-retweet').classList.toggle('active', pending);
+  article.querySelector('.action-retweet')?.classList.toggle('active', pending);
 }
 
 export function setBookmarkButtonState(article, pending) {
   article.dataset.bookmarkActive = String(pending);
-  article.querySelector('.action-bookmark').classList.toggle('active', pending);
+  article.querySelector('.action-bookmark')?.classList.toggle('active', pending);
 }
 
 export function bumpCommentCount(article, delta) {

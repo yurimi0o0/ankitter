@@ -178,14 +178,24 @@ function findPostContext(target) {
   return { article, cardId: article.dataset.cardId };
 }
 
-// Applies fn to every rendered copy of a card (the same card can appear more
-// than once in an infinite feed).
+// Applies fn to every rendered copy of a card that has an action bar (the
+// same card can appear more than once in an infinite feed, and can also
+// appear as a non-interactive .media-post teaser, which has no actions).
 function forEachCardCopy(cardId, fn) {
-  el.feedList.querySelectorAll(`.post[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
+  el.feedList.querySelectorAll(`.post:not(.media-post)[data-card-id="${CSS.escape(cardId)}"]`).forEach(fn);
 }
 
 function updateActionCountForAllCopies(cardId, actionClass, count) {
   forEachCardCopy(cardId, (post) => setActionCount(post, actionClass, count));
+}
+
+// Closes every open comment (⋮) menu, optionally leaving one open.
+function closeCommentMenus(exceptMenu) {
+  el.feedList.querySelectorAll('.comment-menu').forEach((menu) => {
+    if (menu === exceptMenu || menu.hidden) return;
+    menu.hidden = true;
+    menu.closest('.comment-item')?.querySelector('.comment-menu-toggle')?.setAttribute('aria-expanded', 'false');
+  });
 }
 
 async function handleFeedClick(e) {
@@ -214,7 +224,10 @@ async function handleFeedClick(e) {
     const nowLiked = !wasLiked;
     const stats = await repo.changeStat(cardId, 'likes', nowLiked ? 1 : -1);
     await repo.setLikeSuppression(cardId, nowLiked);
-    setLikeButtonState(article, nowLiked);
+    // The same card can be on screen more than once (small deck, repeats
+    // after a reshuffle) — keep every copy's heart/count in sync, not just
+    // the one tapped.
+    forEachCardCopy(cardId, (post) => setLikeButtonState(post, nowLiked));
     updateActionCountForAllCopies(cardId, 'action-like', stats.likes);
     return;
   }
@@ -228,7 +241,7 @@ async function handleFeedClick(e) {
       await state.feedEngine.cancelRetweet(cardId);
     }
     const stats = await repo.changeStat(cardId, 'retweets', nowRetweeted ? 1 : -1);
-    setRetweetButtonState(article, nowRetweeted);
+    forEachCardCopy(cardId, (post) => setRetweetButtonState(post, nowRetweeted));
     updateActionCountForAllCopies(cardId, 'action-retweet', stats.retweets);
     return;
   }
@@ -242,7 +255,7 @@ async function handleFeedClick(e) {
       await state.feedEngine.cancelBookmark(cardId);
     }
     const stats = await repo.changeStat(cardId, 'bookmarks', nowBookmarked ? 1 : -1);
-    setBookmarkButtonState(article, nowBookmarked);
+    forEachCardCopy(cardId, (post) => setBookmarkButtonState(post, nowBookmarked));
     updateActionCountForAllCopies(cardId, 'action-bookmark', stats.bookmarks);
     return;
   }
@@ -251,6 +264,7 @@ async function handleFeedClick(e) {
     const item = actionEl.closest('.comment-item');
     const menu = item.querySelector('.comment-menu');
     const isHidden = menu.hidden;
+    closeCommentMenus(isHidden ? menu : null); // only one menu open at a time
     menu.hidden = !isHidden;
     actionEl.setAttribute('aria-expanded', String(isHidden));
     return;
@@ -511,6 +525,14 @@ async function init() {
   setupDialogBackdropClose(el.importDialog);
   el.feedList.addEventListener('click', handleFeedClick);
   el.feedList.addEventListener('submit', handleFeedSubmit);
+  // Tapping anywhere outside a comment's ⋮ menu (or pressing Escape) closes
+  // it — otherwise an opened menu has no way to dismiss except re-tapping it.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.comment-actions')) closeCommentMenus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCommentMenus();
+  });
   setupInfiniteScroll();
 
   if (sources.length === 0) {
