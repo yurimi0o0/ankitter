@@ -101,7 +101,7 @@ function renderStep(container, state, handlers) {
       </div>
       <div class="import-actions">
         ${state.allowCancel ? '<button type="button" class="btn-secondary" data-action="cancel">キャンセル</button>' : ''}
-        <button type="button" class="btn-primary" data-action="save">保存してはじめる</button>
+        <button type="button" class="btn-primary" data-action="save">${escapeHtml(state.saveLabel || '保存してはじめる')}</button>
       </div>
     </div>`;
 
@@ -141,7 +141,7 @@ function renderStep(container, state, handlers) {
 // Mounts the full add-new-deck flow into `container`.
 // options: { allowCancel, onSave(payload), onCancel() }
 export function mountImportFlow(container, options = {}) {
-  const state = { rawText: null, allowCancel: !!options.allowCancel };
+  const state = { rawText: null, allowCancel: !!options.allowCancel, saveLabel: '保存してはじめる' };
   renderStep(container, state, {
     onFileLoaded: (loaded) => {
       Object.assign(state, loaded);
@@ -153,8 +153,8 @@ export function mountImportFlow(container, options = {}) {
   });
 }
 
-// Mounts the remap-only flow (skips file picking) for an existing source.
-// options: { source, onSave(mapping), onCancel() }
+// Mounts the edit/remap flow (skips file picking) for an existing source.
+// options: { source, onSave(payload), onCancel() }
 export function mountRemapFlow(container, options = {}) {
   const { source } = options;
   const { rows, columnCount } = parseTSV(source.rawText);
@@ -167,9 +167,10 @@ export function mountRemapFlow(container, options = {}) {
     displayName: source.displayName,
     handle: source.handle,
     allowCancel: true,
+    saveLabel: '保存',
   };
   renderStep(container, state, {
-    onSave: (payload) => options.onSave(payload.mapping),
+    onSave: options.onSave,
     onCancel: options.onCancel,
   });
 }
