@@ -22,7 +22,7 @@ export async function getSource(id) {
 }
 
 // Creates a source + its cards from raw TSV text and a column mapping.
-export async function addSource({ fileName, displayName, handle, rawText, mapping }) {
+export async function addSource({ fileName, displayName, handle, rawText, mapping, mediaEnabled = true, mediaColumns = [] }) {
   const id = uuid();
   const source = {
     id,
@@ -31,6 +31,8 @@ export async function addSource({ fileName, displayName, handle, rawText, mappin
     handle,
     rawText,
     mapping,
+    mediaEnabled,
+    mediaColumns,
     createdAt: Date.now(),
   };
   await dbPut(STORES.sources, source);
@@ -41,12 +43,23 @@ export async function addSource({ fileName, displayName, handle, rawText, mappin
 // Re-parses a source's stored TSV with a new column mapping and replaces
 // its cards. Card ids are row-index based, so existing likes/comments on
 // unchanged rows survive the remap.
-export async function updateSourceMapping(sourceId, mapping) {
+export async function updateSourceMapping(sourceId, mapping, mediaSettings = {}) {
   const source = await dbGet(STORES.sources, sourceId);
   if (!source) throw new Error('source not found');
   source.mapping = mapping;
+  if ('mediaEnabled' in mediaSettings) source.mediaEnabled = mediaSettings.mediaEnabled;
+  if ('mediaColumns' in mediaSettings) source.mediaColumns = mediaSettings.mediaColumns;
   await dbPut(STORES.sources, source);
   await regenerateCards(source);
+  return source;
+}
+
+export async function updateSourceMeta(sourceId, { displayName, handle }) {
+  const source = await dbGet(STORES.sources, sourceId);
+  if (!source) throw new Error('source not found');
+  source.displayName = displayName;
+  source.handle = handle;
+  await dbPut(STORES.sources, source);
   return source;
 }
 
@@ -77,7 +90,10 @@ async function regenerateCards(source) {
   const existing = await dbGetAllByIndex(STORES.cards, 'sourceId', source.id);
   for (const card of existing) await dbDelete(STORES.cards, card.id);
   const { rows } = parseTSV(source.rawText);
-  const cards = rowsToCards(source.id, rows, source.mapping);
+  const cards = rowsToCards(source.id, rows, source.mapping, {
+    mediaEnabled: source.mediaEnabled !== false,
+    mediaColumns: source.mediaColumns,
+  });
   await dbBulkPut(STORES.cards, cards);
   return cards;
 }
@@ -85,7 +101,13 @@ async function regenerateCards(source) {
 // ---- Cards ----
 
 export async function getAllCards() {
-  return dbGetAll(STORES.cards);
+  const cards = await dbGetAll(STORES.cards);
+  if (cards.length > 0 && cards.some((card) => !Array.isArray(card.mediaFields))) {
+    const sources = await getSources();
+    for (const source of sources) await regenerateCards(source);
+    return dbGetAll(STORES.cards);
+  }
+  return cards;
 }
 
 export async function getCard(cardId) {

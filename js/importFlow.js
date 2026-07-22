@@ -15,6 +15,14 @@ function guessDefaultMapping(columnCount) {
   return mapping;
 }
 
+function defaultMediaColumns(columnCount) {
+  return new Array(columnCount).fill(true);
+}
+
+function normalizeMediaColumns(state) {
+  return Array.from({ length: state.columnCount }, (_, i) => state.mapping[i] !== ROLES.QUESTION && state.mapping[i] !== ROLES.ANSWER && state.mediaColumns[i] !== false);
+}
+
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -30,7 +38,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// state: { fileName, rawText, rows, columnCount, mapping, displayName, handle }
+// state: { fileName, rawText, rows, columnCount, mapping, displayName, handle, mediaEnabled, mediaColumns }
 function renderStep(container, state, handlers) {
   if (!state.rawText) {
     container.innerHTML = `
@@ -53,6 +61,8 @@ function renderStep(container, state, handlers) {
         rows,
         columnCount,
         mapping: guessDefaultMapping(columnCount),
+        mediaEnabled: true,
+        mediaColumns: defaultMediaColumns(columnCount),
         displayName,
         handle,
       });
@@ -73,11 +83,20 @@ function renderStep(container, state, handlers) {
       const options = ROLE_OPTIONS.map(
         (role) => `<option value="${role}" ${state.mapping[colIndex] === role ? 'selected' : ''}>${ROLE_LABELS[role]}</option>`
       ).join('');
+      const isQuestionOrAnswer = state.mapping[colIndex] === ROLES.QUESTION || state.mapping[colIndex] === ROLES.ANSWER;
+      const mediaChecked = !isQuestionOrAnswer && state.mediaColumns[colIndex] !== false;
+      const mediaDisabled = !state.mediaEnabled || isQuestionOrAnswer;
       return `
         <tr>
           <td class="col-index">列${colIndex + 1}</td>
           <td class="col-preview">${samples || '<span class="muted">(空)</span>'}</td>
           <td class="col-role"><select data-col="${colIndex}">${options}</select></td>
+          <td class="col-media">
+            <label class="media-column-option">
+              <input type="checkbox" data-media-col="${colIndex}" ${mediaChecked ? 'checked' : ''} ${mediaDisabled ? 'disabled' : ''} />
+              使う
+            </label>
+          </td>
         </tr>`;
     })
     .join('');
@@ -93,15 +112,22 @@ function renderStep(container, state, handlers) {
         <input type="text" class="handle-input" value="${escapeHtml(state.handle)}" maxlength="40" />
       </div>
       <p class="import-help">各列の役割を選んでください（${state.rows.length}行を検出）</p>
+      <label class="media-toggle">
+        <input type="checkbox" class="media-enabled-input" ${state.mediaEnabled ? 'checked' : ''} />
+        <span>
+          <strong>メディアカードを作成する</strong>
+          <small>チェックした補足列だけを、10〜15投稿に1回程度のカードに使います。</small>
+        </span>
+      </label>
       <div class="mapping-table-wrap">
         <table class="mapping-table">
-          <thead><tr><th></th><th>プレビュー</th><th>役割</th></tr></thead>
+          <thead><tr><th></th><th>プレビュー</th><th>役割</th><th>メディア</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>
       <div class="import-actions">
         ${state.allowCancel ? '<button type="button" class="btn-secondary" data-action="cancel">キャンセル</button>' : ''}
-        <button type="button" class="btn-primary" data-action="save">保存してはじめる</button>
+        <button type="button" class="btn-primary" data-action="save">${escapeHtml(state.saveLabel || '保存してはじめる')}</button>
       </div>
     </div>`;
 
@@ -111,10 +137,21 @@ function renderStep(container, state, handlers) {
   container.querySelector('.handle-input').addEventListener('input', (e) => {
     state.handle = e.target.value.replace(/^@/, '');
   });
+  container.querySelector('.media-enabled-input').addEventListener('change', (e) => {
+    state.mediaEnabled = e.target.checked;
+    renderStep(container, state, handlers);
+  });
   container.querySelectorAll('select[data-col]').forEach((select) => {
     select.addEventListener('change', (e) => {
       const col = parseInt(e.target.dataset.col, 10);
       state.mapping[col] = e.target.value;
+      renderStep(container, state, handlers);
+    });
+  });
+  container.querySelectorAll('input[data-media-col]').forEach((input) => {
+    input.addEventListener('change', (e) => {
+      const col = parseInt(e.target.dataset.mediaCol, 10);
+      state.mediaColumns[col] = e.target.checked;
     });
   });
   container.querySelector('[data-action="save"]').addEventListener('click', () => {
@@ -132,6 +169,8 @@ function renderStep(container, state, handlers) {
       mapping: state.mapping,
       displayName: state.displayName.trim(),
       handle: state.handle.trim().replace(/\s+/g, '_'),
+      mediaEnabled: state.mediaEnabled,
+      mediaColumns: normalizeMediaColumns(state),
     });
   });
   const cancelBtn = container.querySelector('[data-action="cancel"]');
@@ -141,7 +180,7 @@ function renderStep(container, state, handlers) {
 // Mounts the full add-new-deck flow into `container`.
 // options: { allowCancel, onSave(payload), onCancel() }
 export function mountImportFlow(container, options = {}) {
-  const state = { rawText: null, allowCancel: !!options.allowCancel };
+  const state = { rawText: null, allowCancel: !!options.allowCancel, saveLabel: '保存してはじめる', mediaEnabled: true, mediaColumns: [] };
   renderStep(container, state, {
     onFileLoaded: (loaded) => {
       Object.assign(state, loaded);
@@ -153,8 +192,8 @@ export function mountImportFlow(container, options = {}) {
   });
 }
 
-// Mounts the remap-only flow (skips file picking) for an existing source.
-// options: { source, onSave(mapping), onCancel() }
+// Mounts the edit/remap flow (skips file picking) for an existing source.
+// options: { source, onSave(payload), onCancel() }
 export function mountRemapFlow(container, options = {}) {
   const { source } = options;
   const { rows, columnCount } = parseTSV(source.rawText);
@@ -166,10 +205,13 @@ export function mountRemapFlow(container, options = {}) {
     mapping: source.mapping.slice(),
     displayName: source.displayName,
     handle: source.handle,
+    mediaEnabled: source.mediaEnabled !== false,
+    mediaColumns: source.mediaColumns || defaultMediaColumns(columnCount),
     allowCancel: true,
+    saveLabel: '保存',
   };
   renderStep(container, state, {
-    onSave: (payload) => options.onSave(payload.mapping),
+    onSave: options.onSave,
     onCancel: options.onCancel,
   });
 }

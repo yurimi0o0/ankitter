@@ -57,7 +57,7 @@ export function renderSettingsPanel(container, handlers) {
                 アイコン
                 <input type="file" accept="image/*" data-action="icon" hidden />
               </label>
-              <button type="button" class="btn-secondary btn-sm" data-action="remap">列割り当て</button>
+              <button type="button" class="btn-secondary btn-sm" data-action="remap">編集</button>
               <button type="button" class="btn-secondary btn-sm danger" data-action="delete">削除</button>
             </div>
           </li>`

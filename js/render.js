@@ -33,6 +33,23 @@ function linkifyTags(tags) {
   return `<div class="post-tags">${tags.map((t) => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>`;
 }
 
+function mediaImagesHtml(images, className = 'inline-image-grid') {
+  if (!images || images.length === 0) return '';
+  return `
+    <div class="${className}">
+      ${images.map((src) => `<img src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`).join('')}
+    </div>`;
+}
+
+function attachImageFallback(root) {
+  root.querySelectorAll('.inline-image-grid img, .media-card-images img').forEach((img) => {
+    img.addEventListener('error', () => {
+      img.closest('.inline-image-grid, .media-card-images')?.classList.add('has-broken-image');
+      img.remove();
+    });
+  });
+}
+
 function commentItemHtml(comment) {
   return `
     <li class="comment-item" data-comment-id="${comment.id}">
@@ -98,7 +115,9 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
           <span class="handle">@${escapeHtml(source ? source.handle : '')}</span>
         </div>
         <div class="post-question">${escapeHtml(card.question)}</div>
+        ${mediaImagesHtml(card.questionImages)}
         <div class="post-answer${answerBlurClass}" data-action="reveal-answer"><span class="answer-text">${escapeHtml(card.answer)}</span><span class="answer-hint">タップして答えを表示</span></div>
+        ${mediaImagesHtml(card.answerImages)}
         ${linkifyTags(card.tags)}
         ${commentsSectionHtml(tsvComment, userComments)}
         <div class="post-actions">
@@ -123,8 +142,52 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   `;
 
   article.querySelector('.post-comments').classList.add('collapsed');
+  attachImageFallback(article);
 
   return article;
+}
+
+export function createMediaPostElement({ card, source }) {
+  const article = document.createElement('article');
+  article.className = 'post media-post';
+  article.dataset.cardId = card.id;
+  const hue = hashHue(source ? source.handle : 'deck');
+  const initial = (source ? source.displayName : '?').charAt(0).toUpperCase();
+  const fields = (card.mediaFields || []).slice(0, 4);
+  const primaryImage = fields.find((field) => field.images && field.images.length > 0);
+
+  article.innerHTML = `
+    <div class="post-row">
+      ${avatarHtml(source, hue, initial)}
+      <div class="post-body">
+        <div class="post-header">
+          <span class="display-name">${escapeHtml(source ? source.displayName : '')}</span>
+          <span class="handle">@${escapeHtml(source ? source.handle : '')}</span>
+        </div>
+        <div class="media-card" style="--media-hue:${hue}">
+          <div class="media-card-kicker">関連メディアカード</div>
+          <h3 class="media-card-title">${escapeHtml(card.question || card.answer || '補足情報')}</h3>
+          ${card.answer ? `<div class="media-card-answer">${escapeHtml(card.answer)}</div>` : ''}
+          ${primaryImage ? mediaImagesHtml(primaryImage.images, 'media-card-images') : ''}
+          <div class="media-card-fields">
+            ${fields.map(mediaFieldHtml).join('')}
+          </div>
+          ${linkifyTags(card.tags)}
+        </div>
+      </div>
+    </div>`;
+
+  attachImageFallback(article);
+  return article;
+}
+
+function mediaFieldHtml(field) {
+  return `
+    <section class="media-card-field">
+      <div class="media-card-label">${escapeHtml(field.label)}</div>
+      ${field.text ? `<p>${escapeHtml(field.text)}</p>` : ''}
+      ${mediaImagesHtml(field.images, 'media-card-images media-card-images-small')}
+    </section>`;
 }
 
 export function setLikeButtonState(article, liked) {
