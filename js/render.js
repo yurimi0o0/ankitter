@@ -103,6 +103,8 @@ function quoteAttachmentHtml(field) {
   return `<p class="post-attachment-quote-text">${escapeHtml(field.text || field.label)}</p>${mediaImagesHtml(field.images, 'inline-image-grid post-attachment-quote-images')}`;
 }
 
+const ATTACHMENT_CHANCE = 0.25; // most posts stay plain text; this is a rare accent, not the default look
+
 function attachmentHtml(card, tsvComment) {
   // A comment-role column can double as a mediaField; when its text is
   // identical to the TSV comment already shown in 元コメント, suppress just
@@ -111,7 +113,7 @@ function attachmentHtml(card, tsvComment) {
   const fields = (card.mediaFields || [])
     .map((f) => (tsvComment && f.text === tsvComment ? { ...f, text: '' } : f))
     .filter((f) => f.text || (f.images && f.images.length));
-  if (fields.length === 0) return '';
+  if (fields.length === 0 || Math.random() >= ATTACHMENT_CHANCE) return '';
   const variant = Math.random() < 0.5 ? 'fields' : 'quote';
   if (variant === 'quote') {
     const top = fields[0];
