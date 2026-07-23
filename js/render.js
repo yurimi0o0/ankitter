@@ -33,18 +33,22 @@ function linkifyTags(tags) {
   return `<div class="post-tags">${tags.map((t) => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>`;
 }
 
+// .trim() matters here: this can be interpolated directly inside
+// .post-answer, which is white-space: pre-wrap (to preserve the answer's
+// own line breaks) — a stray leading/trailing newline would render as a
+// visible blank line there.
 function mediaImagesHtml(images, className = 'inline-image-grid') {
   if (!images || images.length === 0) return '';
   return `
     <div class="${className}">
       ${images.map((src) => `<img src="${escapeHtml(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`).join('')}
-    </div>`;
+    </div>`.trim();
 }
 
 function attachImageFallback(root) {
-  root.querySelectorAll('.inline-image-grid img, .media-card-images img').forEach((img) => {
+  root.querySelectorAll('.inline-image-grid img').forEach((img) => {
     img.addEventListener('error', () => {
-      img.closest('.inline-image-grid, .media-card-images')?.classList.add('has-broken-image');
+      img.closest('.inline-image-grid')?.classList.add('has-broken-image');
       img.remove();
     });
   });
@@ -81,6 +85,65 @@ export function commentsSectionHtml(tsvComment, userComments) {
     </div>`;
 }
 
+// Media-attachment block: whenever a card has supplementary fields (comment/
+// tag/other non-Q&A columns), it's attached to the same interactive post —
+// like a photo tweet — rather than shown as a separate teaser post. The
+// presentation (a few compact tiles vs. one big pull-quote) is re-rolled
+// each time the card renders, purely for visual variety.
+function fieldTileHtml(field) {
+  return `
+    <section class="post-attachment-field">
+      <div class="post-attachment-label">${escapeHtml(field.label)}</div>
+      ${field.text ? `<p>${escapeHtml(field.text)}</p>` : ''}
+      ${mediaImagesHtml(field.images, 'inline-image-grid post-attachment-images-small')}
+    </section>`;
+}
+
+function quoteAttachmentHtml(field) {
+  return `<p class="post-attachment-quote-text">${escapeHtml(field.text || field.label)}</p>`;
+}
+
+function attachmentHtml(card, tsvComment) {
+  // A comment-role column can double as a mediaField; skip any field whose
+  // text is identical to the TSV comment already shown in 元コメント, so the
+  // same line doesn't appear twice in the same post.
+  const fields = (card.mediaFields || []).filter(
+    (f) => (f.text || (f.images && f.images.length)) && !(tsvComment && f.text === tsvComment)
+  );
+  if (fields.length === 0) return '';
+  const variant = Math.random() < 0.5 ? 'fields' : 'quote';
+  if (variant === 'quote') {
+    const top = fields[0];
+    return `
+      <div class="post-attachment post-attachment-quote">
+        ${quoteAttachmentHtml(top)}
+      </div>`;
+  }
+  return `
+    <div class="post-attachment post-attachment-fields">
+      ${fields.slice(0, 4).map(fieldTileHtml).join('')}
+    </div>`;
+}
+
+// Derives a stable "覚えた実感" percentage from real per-card data only (no
+// fabricated crowd stats): a liked card sits in a high band, an unliked one
+// climbs slowly with view count. The per-card jitter is a hash, not
+// Math.random(), so the number stays the same every time the card is shown.
+export function computeConfidence(stats, liked, cardId) {
+  const jitter = hashHue(cardId) % 20;
+  if (liked) return Math.min(95, 70 + jitter);
+  return Math.min(55, Math.round(Math.min(stats.impressions || 0, 12) * 4));
+}
+
+// .trim() for the same reason as mediaImagesHtml above.
+function gaugeHtml(percent) {
+  return `
+    <div class="confidence-gauge">
+      <div class="confidence-gauge-track"><div class="confidence-gauge-fill" style="width:${percent}%"></div></div>
+      <span class="confidence-gauge-label">覚えた実感 ${percent}%</span>
+    </div>`.trim();
+}
+
 function avatarHtml(source, hue, initial) {
   if (source && source.icon) {
     if (source.icon.startsWith('data:')) {
@@ -91,7 +154,7 @@ function avatarHtml(source, hue, initial) {
   return `<div class="avatar" style="background: hsl(${hue} 70% 45%)">${escapeHtml(initial)}</div>`;
 }
 
-export function createPostElement({ card, source, isRetweet, isBookmark, liked, rtPending, bmPending, tsvComment, userComments, answerMode, stats }) {
+export function createPostElement({ card, source, isRetweet, isBookmark, liked, rtPending, bmPending, tsvComment, userComments, answerMode, stats, gauge }) {
   const s = stats || { impressions: 0, likes: 0, retweets: 0, bookmarks: 0 };
   const article = document.createElement('article');
   article.className = 'post';
@@ -103,6 +166,9 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   const hue = hashHue(source ? source.handle : 'deck');
   const initial = (source ? source.displayName : '?').charAt(0).toUpperCase();
   const answerBlurClass = answerMode === 'blur' ? ' blurred' : '';
+  const hasImages = (card.questionImages?.length || 0) + (card.answerImages?.length || 0) > 0;
+  const emphasizeImages = hasImages && Math.random() < 0.4;
+  const imageGridClass = `inline-image-grid${emphasizeImages ? ' emphasized' : ''}`;
 
   article.innerHTML = `
     ${isRetweet ? `<div class="retweet-flag">${ICONS.retweet} もう一度</div>` : ''}
@@ -115,12 +181,9 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
           <span class="handle">@${escapeHtml(source ? source.handle : '')}</span>
         </div>
         <div class="post-question">${escapeHtml(card.question)}</div>
-        ${mediaImagesHtml(card.questionImages)}
-        <div class="post-answer${answerBlurClass}" data-action="reveal-answer">
-          <span class="answer-text">${escapeHtml(card.answer)}</span>
-          ${mediaImagesHtml(card.answerImages, 'inline-image-grid answer-media')}
-          <span class="answer-hint">タップして答えを表示</span>
-        </div>
+        ${mediaImagesHtml(card.questionImages, imageGridClass)}
+        <div class="post-answer${answerBlurClass}" data-action="reveal-answer"><span class="answer-text">${escapeHtml(card.answer)}</span>${mediaImagesHtml(card.answerImages, `${imageGridClass} answer-media`)}${gauge ? gaugeHtml(gauge.percent) : ''}<span class="answer-hint">タップして答えを表示</span></div>
+        ${attachmentHtml(card, tsvComment)}
         ${linkifyTags(card.tags)}
         ${commentsSectionHtml(tsvComment, userComments)}
         <div class="post-actions">
@@ -160,51 +223,48 @@ export function createPostElement({ card, source, isRetweet, isBookmark, liked, 
   return article;
 }
 
-export function createMediaPostElement({ card, source }) {
+// Card-less "recap" post: real aggregate stats across the whole deck,
+// shown periodically. Has no cardId and no action bar (there's nothing on
+// it to like/retweet/bookmark), so it never enters forEachCardCopy sync.
+export function createRecapPostElement({ data }) {
   const article = document.createElement('article');
-  article.className = 'post media-post';
-  article.dataset.cardId = card.id;
-  const hue = hashHue(source ? source.handle : 'deck');
-  const initial = (source ? source.displayName : '?').charAt(0).toUpperCase();
-  const fields = (card.mediaFields || []).slice(0, 4);
-  const primaryImage = fields.find((field) => field.images && field.images.length > 0);
+  article.className = 'post recap-post';
+
+  const tiles = [
+    { icon: ICONS.chart, label: '今週の表示', value: data.weeklyViews },
+    { icon: ICONS.heart, label: 'いいね', value: data.likeCount },
+    { icon: ICONS.bookmark, label: '保存', value: data.bookmarkCount },
+  ];
 
   article.innerHTML = `
     <div class="post-row">
-      ${avatarHtml(source, hue, initial)}
+      <div class="avatar recap-avatar">📊</div>
       <div class="post-body">
         <div class="post-header">
-          <span class="display-name">${escapeHtml(source ? source.displayName : '')}</span>
-          <span class="handle">@${escapeHtml(source ? source.handle : '')}</span>
+          <span class="display-name">学習レポート</span>
         </div>
-        <div class="media-card" style="--media-hue:${hue}">
-          <div class="media-card-kicker">関連メディアカード</div>
-          <h3 class="media-card-title">${escapeHtml(card.question || card.answer || '補足情報')}</h3>
-          ${card.answer ? `<div class="media-card-answer">${escapeHtml(card.answer)}</div>` : ''}
-          ${primaryImage ? mediaImagesHtml(primaryImage.images, 'media-card-images') : ''}
-          <div class="media-card-fields">
-            ${fields.map(mediaFieldHtml).join('')}
+        <div class="recap-card">
+          <div class="recap-card-kicker">あなたの記録</div>
+          <div class="recap-card-tiles">
+            ${tiles
+              .map(
+                (t) => `
+              <div class="recap-tile">
+                <span class="recap-tile-icon">${t.icon}</span>
+                <span class="recap-tile-value">${t.value}</span>
+                <span class="recap-tile-label">${escapeHtml(t.label)}</span>
+              </div>`
+              )
+              .join('')}
           </div>
-          ${linkifyTags(card.tags)}
+          <div class="recap-card-footnote">累計表示回数 ${data.totalImpressions}回</div>
         </div>
       </div>
     </div>`;
 
-  attachImageFallback(article);
   return article;
 }
 
-function mediaFieldHtml(field) {
-  return `
-    <section class="media-card-field">
-      <div class="media-card-label">${escapeHtml(field.label)}</div>
-      ${field.text ? `<p>${escapeHtml(field.text)}</p>` : ''}
-      ${mediaImagesHtml(field.images, 'media-card-images media-card-images-small')}
-    </section>`;
-}
-
-// Media-post teasers share a card's id but have no action bar at all, so
-// these setters are no-ops on them rather than throwing on a null lookup.
 function applyLikeState(article, liked) {
   article.dataset.likeActive = String(liked);
   article.querySelector('.action-like')?.classList.toggle('liked', liked);

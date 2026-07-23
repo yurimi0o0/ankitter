@@ -225,6 +225,21 @@ export async function addViewHistory(cardId) {
   await dbTrimOldest(STORES.viewHistory, VIEW_HISTORY_LIMIT);
 }
 
+// Number of views recorded since sinceMs (used by the recap card's "this
+// week" figure). viewHistory is capped at VIEW_HISTORY_LIMIT, so a full
+// table scan is cheap.
+export async function getViewCountSince(sinceMs) {
+  const rows = await dbGetAll(STORES.viewHistory);
+  return rows.filter((r) => r.viewedAt >= sinceMs).length;
+}
+
+// Sum of every card's impression counter (used by the recap card's
+// all-time total).
+export async function getTotalImpressions() {
+  const rows = await dbGetAll(STORES.stats);
+  return rows.reduce((sum, r) => sum + (r.impressions || 0), 0);
+}
+
 // ---- Settings (simple key/value) ----
 
 const DEFAULT_SETTINGS = {

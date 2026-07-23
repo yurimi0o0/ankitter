@@ -1,9 +1,14 @@
 // Feed ordering engine. Decides what card to show next: normal shuffled
-// rotation, plus three mechanics:
+// rotation, plus:
 //   ♡ 覚えた   — SUPPRESSED for ~7 days after the like (shown less), then
 //                 returns to normal rotation.
 //   🔁 RT      — reinserted once, ~10 posts after the tap (in-session).
 //   🔖 保存    — resurfaces once near the front, ~24 hours after the tap.
+//   学習レポート — a card-less recap entry inserted periodically.
+//
+// Media attachments, image emphasis, and the "覚えた実感" gauge are no
+// longer scheduled here — they're per-card real data, so render.js/app.js
+// decide them at render time for whichever card the cycle already picked.
 
 import * as repo from './repo.js';
 
@@ -11,8 +16,8 @@ const LIKE_SUPPRESS_MS = 7 * 24 * 60 * 60 * 1000; // ♡: hide from rotation thi
 const BOOKMARK_DELAY_MS = 24 * 60 * 60 * 1000;    // 🔖 保存: resurface after ~1 day
 const RETWEET_DELAY_POSTS = 10;                    // 🔁 RT: reinsert after ~10 posts
 const PRIORITY_SPREAD = 4; // 1 priority card every (spread+1) posts near the front
-const MEDIA_MIN_GAP = 10;
-const MEDIA_MAX_GAP = 15;
+const RECAP_MIN_GAP = 40;
+const RECAP_MAX_GAP = 60;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -34,14 +39,17 @@ function interleaveFront(priority, rest, spread) {
   return result;
 }
 
+function randomRecapGap() {
+  return RECAP_MIN_GAP + Math.floor(Math.random() * (RECAP_MAX_GAP - RECAP_MIN_GAP + 1));
+}
+
 export class FeedEngine {
   constructor(cards) {
     this.setCards(cards);
     this.cycleQueue = []; // [{ cardId, kind: 'normal' | 'bm' }]
-    this.mediaQueue = [];
-    this.mediaCountdown = randomMediaGap();
     this.pendingRetweets = []; // [{ id, cardId, remaining }] — post-count countdown
     this.activeBookmarks = new Map(); // cardId -> db id (waiting for their 24h)
+    this.recapCountdown = randomRecapGap();
   }
 
   static async create() {
@@ -55,7 +63,6 @@ export class FeedEngine {
 
   setCards(cards) {
     this.allCardIds = cards.map((c) => c.id);
-    this.mediaCardIds = cards.filter((c) => hasMediaCardData(c)).map((c) => c.id);
   }
 
   setCardIds(cardIds) {
@@ -67,8 +74,6 @@ export class FeedEngine {
     for (const cardId of this.activeBookmarks.keys()) {
       if (!valid.has(cardId)) this.activeBookmarks.delete(cardId);
     }
-    this.mediaCardIds = this.mediaCardIds.filter((id) => valid.has(id));
-    this.mediaQueue = this.mediaQueue.filter((id) => valid.has(id));
   }
 
   hasCards() {
@@ -144,35 +149,27 @@ export class FeedEngine {
     await repo.removeBookmark(dbId);
   }
 
-  takeMediaEntryIfDue() {
-    if (this.mediaCountdown > 0 || this.mediaCardIds.length === 0) return null;
-    if (this.mediaQueue.length === 0) this.mediaQueue = shuffle(this.mediaCardIds);
-    const cardId = this.mediaQueue.shift();
-    this.mediaCountdown = randomMediaGap();
-    return { cardId, isRetweet: false, isBookmark: false, isMedia: true };
+  tickRecapCountdown() {
+    if (this.recapCountdown > 0) this.recapCountdown--;
   }
 
-  tickMediaCountdown() {
-    if (this.mediaCardIds.length > 0 && this.mediaCountdown > 0) this.mediaCountdown--;
-  }
-
-  // Returns up to n upcoming feed entries: { cardId, isRetweet, isBookmark, isMedia }
+  // Returns up to n upcoming feed entries: { cardId, isRetweet, isBookmark, isRecap }
   async getNextBatch(n) {
     const batch = [];
     for (let i = 0; i < n; i++) {
-      const mediaEntry = this.takeMediaEntryIfDue();
-      if (mediaEntry) {
-        batch.push(mediaEntry);
-        continue;
-      }
-
       for (const r of this.pendingRetweets) r.remaining--;
       const dueIndex = this.pendingRetweets.findIndex((r) => r.remaining <= 0);
       if (dueIndex !== -1) {
         const [due] = this.pendingRetweets.splice(dueIndex, 1);
         repo.removeRetweet(due.id);
-        batch.push({ cardId: due.cardId, isRetweet: true, isBookmark: false, isMedia: false });
-        this.tickMediaCountdown();
+        batch.push({ cardId: due.cardId, isRetweet: true, isBookmark: false, isRecap: false });
+        this.tickRecapCountdown();
+        continue;
+      }
+
+      if (this.recapCountdown <= 0) {
+        this.recapCountdown = randomRecapGap();
+        batch.push({ cardId: null, isRetweet: false, isBookmark: false, isRecap: true });
         continue;
       }
 
@@ -188,17 +185,9 @@ export class FeedEngine {
         this.activeBookmarks.delete(entry.cardId);
         if (dbId !== undefined) repo.removeBookmark(dbId);
       }
-      batch.push({ cardId: entry.cardId, isRetweet: false, isBookmark, isMedia: false });
-      this.tickMediaCountdown();
+      batch.push({ cardId: entry.cardId, isRetweet: false, isBookmark, isRecap: false });
+      this.tickRecapCountdown();
     }
     return batch;
   }
-}
-
-function hasMediaCardData(card) {
-  return (card.mediaFields || []).some((field) => field.text || (field.images && field.images.length > 0));
-}
-
-function randomMediaGap() {
-  return MEDIA_MIN_GAP + Math.floor(Math.random() * (MEDIA_MAX_GAP - MEDIA_MIN_GAP + 1));
 }
