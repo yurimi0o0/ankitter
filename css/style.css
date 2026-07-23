@@ -426,6 +426,12 @@ button, input, select, textarea {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.post-attachment-quote-images {
+  margin-top: 0.6rem;
+}
+.post-attachment-quote-images img {
+  max-height: 220px;
+}
 
 /* 覚えた実感 gauge: a rare, per-render decoration on a normal post's
    answer, derived from that card's own real stats. Flat fill, no gradient. */

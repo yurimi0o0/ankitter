@@ -100,17 +100,20 @@ function fieldTileHtml(field) {
 }
 
 function quoteAttachmentHtml(field) {
-  return `<p class="post-attachment-quote-text">${escapeHtml(field.text || field.label)}</p>`;
+  return `<p class="post-attachment-quote-text">${escapeHtml(field.text || field.label)}</p>${mediaImagesHtml(field.images, 'inline-image-grid post-attachment-quote-images')}`;
 }
 
+const ATTACHMENT_CHANCE = 0.25; // most posts stay plain text; this is a rare accent, not the default look
+
 function attachmentHtml(card, tsvComment) {
-  // A comment-role column can double as a mediaField; skip any field whose
-  // text is identical to the TSV comment already shown in 元コメント, so the
-  // same line doesn't appear twice in the same post.
-  const fields = (card.mediaFields || []).filter(
-    (f) => (f.text || (f.images && f.images.length)) && !(tsvComment && f.text === tsvComment)
-  );
-  if (fields.length === 0) return '';
+  // A comment-role column can double as a mediaField; when its text is
+  // identical to the TSV comment already shown in 元コメント, suppress just
+  // the duplicate text (not the whole field) so any images it carries still
+  // show up — 元コメント only ever renders plain text, never images.
+  const fields = (card.mediaFields || [])
+    .map((f) => (tsvComment && f.text === tsvComment ? { ...f, text: '' } : f))
+    .filter((f) => f.text || (f.images && f.images.length));
+  if (fields.length === 0 || Math.random() >= ATTACHMENT_CHANCE) return '';
   const variant = Math.random() < 0.5 ? 'fields' : 'quote';
   if (variant === 'quote') {
     const top = fields[0];
